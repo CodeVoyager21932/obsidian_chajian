@@ -1,0 +1,10 @@
+{
+  "id": "career-os",
+  "name": "CareerOS",
+  "version": "0.1.0",
+  "minAppVersion": "0.15.0",
+  "description": "职业规划操作系统 - 通过分析笔记和市场信息自动生成能力画像、差距分析和行动计划",
+  "author": "CareerOS Team",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

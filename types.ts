@@ -274,6 +274,26 @@ export interface MarketProfileSummary {
 }
 
 // ============================================================================
+// Error Log Types
+// ============================================================================
+
+export type ErrorType = 'extraction' | 'validation' | 'file_operation' | 'llm' | 'unknown';
+
+export interface ErrorLogEntry {
+  timestamp: string;
+  path: string;
+  attempts: number;
+  error: string;
+  type: ErrorType;
+}
+
+export interface ErrorLogSummary {
+  totalErrors: number;
+  byType: Record<ErrorType, number>;
+  entries: ErrorLogEntry[];
+}
+
+// ============================================================================
 // Settings Types
 // ============================================================================
 

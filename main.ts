@@ -1,5 +1,6 @@
 import { Plugin, TFile, Notice, WorkspaceLeaf } from 'obsidian';
-import { CareerOSSettings, QueueStatus, SelfProfile, MarketProfile } from './types';
+import { CareerOSSettings, QueueStatus, SelfProfile, MarketProfile, ErrorLogSummary } from './types';
+import { parseErrorLog, generateErrorSummary } from './utils/errorLogParser';
 import { CareerOSSettingsSchema, CURRENT_SCHEMA_VERSION } from './schema';
 import { ProfileEngine, createProfileEngine } from './ProfileEngine';
 import { LLMClient, createLLMClient } from './llmClient';
@@ -104,6 +105,7 @@ export default class CareerOSPlugin extends Plugin {
         onLoadSelfProfile: () => this.loadSelfProfile(),
         onLoadMarketProfiles: () => this.loadMarketProfiles(),
         onLoadErrorCount: () => this.loadErrorCount(),
+        onLoadErrorLog: () => this.loadErrorLog(),
         onRefreshSelfProfile: () => this.refreshSelfProfile(),
       })
     );
@@ -189,6 +191,41 @@ export default class CareerOSPlugin extends Plugin {
     } catch (error) {
       console.error('Failed to load error count:', error);
       return 0;
+    }
+  }
+  
+  /**
+   * Load and parse error log for detailed display
+   * 
+   * Requirements: 11.3
+   * - Read error_log.md and parse error entries
+   * - Categorize errors by type (extraction, validation, file operation)
+   */
+  private async loadErrorLog(): Promise<ErrorLogSummary | null> {
+    try {
+      const errorLogPath = `${this.pluginDataDir}/error_log.md`;
+      const file = this.app.vault.getAbstractFileByPath(errorLogPath);
+      
+      if (!file || !(file instanceof TFile)) {
+        return {
+          totalErrors: 0,
+          byType: {
+            extraction: 0,
+            validation: 0,
+            file_operation: 0,
+            llm: 0,
+            unknown: 0,
+          },
+          entries: [],
+        };
+      }
+      
+      const content = await this.app.vault.read(file);
+      const entries = parseErrorLog(content);
+      return generateErrorSummary(entries);
+    } catch (error) {
+      console.error('Failed to load error log:', error);
+      return null;
     }
   }
   

@@ -13,8 +13,9 @@
 import React, { useEffect } from 'react';
 import { ItemView, WorkspaceLeaf } from 'obsidian';
 import { createRoot, Root } from 'react-dom/client';
-import { SelfProfile, MarketProfile, SkillProfile, ProjectSummary, TechItem } from '../types';
-import { DashboardProvider, useDashboard, WorkflowStatus } from './DashboardContext';
+import { SelfProfile, MarketProfile, SkillProfile, ProjectSummary, TechItem, ErrorLogSummary, ErrorLogEntry, ErrorType } from '../types';
+import { DashboardProvider, useDashboard } from './DashboardContext';
+import { getErrorTypeLabel, getErrorTypeIcon } from '../utils/errorLogParser';
 
 // ============================================================================
 // Constants
@@ -446,9 +447,10 @@ function WorkflowSection(): JSX.Element {
 
 /**
  * Error summary section
+ * Requirements: 11.3
  */
 function ErrorSummarySection(): JSX.Element {
-  const { errorCount } = useDashboard();
+  const { errorCount, openErrorLogModal, isErrorLogModalOpen, closeErrorLogModal, errorLogSummary, isLoadingErrorLog } = useDashboard();
   
   if (errorCount === 0) {
     return (
@@ -460,17 +462,186 @@ function ErrorSummarySection(): JSX.Element {
   }
   
   return (
-    <div className="career-os-section career-os-errors-section career-os-has-errors">
-      <h3>⚠️ Errors</h3>
-      <div className="career-os-error-summary">
-        <span className="career-os-error-count">{errorCount}</span>
-        <span className="career-os-error-label">errors in error log</span>
+    <>
+      <div className="career-os-section career-os-errors-section career-os-has-errors">
+        <h3>⚠️ Errors</h3>
+        <div className="career-os-error-summary">
+          <span className="career-os-error-count">{errorCount}</span>
+          <span className="career-os-error-label">errors in error log</span>
+        </div>
+        <button 
+          className="career-os-view-errors-btn"
+          onClick={openErrorLogModal}
+        >
+          View Error Log
+        </button>
       </div>
-      <button className="career-os-view-errors-btn">
-        View Error Log
-      </button>
+      
+      {/* Error Log Modal */}
+      {isErrorLogModalOpen && (
+        <ErrorLogModal 
+          summary={errorLogSummary}
+          isLoading={isLoadingErrorLog}
+          onClose={closeErrorLogModal}
+        />
+      )}
+    </>
+  );
+}
+
+/**
+ * Error Log Modal - displays detailed error information
+ * Requirements: 11.3
+ */
+interface ErrorLogModalProps {
+  summary: ErrorLogSummary | null;
+  isLoading: boolean;
+  onClose: () => void;
+}
+
+function ErrorLogModal({ summary, isLoading, onClose }: ErrorLogModalProps): JSX.Element {
+  // Close on escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+  
+  return (
+    <div className="career-os-modal-overlay" onClick={onClose}>
+      <div className="career-os-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="career-os-modal-header">
+          <h3>📋 Error Log</h3>
+          <button className="career-os-modal-close" onClick={onClose}>×</button>
+        </div>
+        
+        <div className="career-os-modal-content">
+          {isLoading ? (
+            <div className="career-os-modal-loading">
+              <div className="career-os-spinner"></div>
+              <span>Loading error log...</span>
+            </div>
+          ) : summary ? (
+            <>
+              {/* Error Type Summary */}
+              <ErrorTypeSummary summary={summary} />
+              
+              {/* Error List */}
+              <ErrorList entries={summary.entries} />
+            </>
+          ) : (
+            <div className="career-os-modal-empty">
+              <p>No error log data available.</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
+}
+
+/**
+ * Error type summary - shows breakdown by error type
+ * Requirements: 11.3
+ */
+function ErrorTypeSummary({ summary }: { summary: ErrorLogSummary }): JSX.Element {
+  const errorTypes: ErrorType[] = ['extraction', 'validation', 'file_operation', 'llm', 'unknown'];
+  const activeTypes = errorTypes.filter(type => summary.byType[type] > 0);
+  
+  if (activeTypes.length === 0) {
+    return <></>;
+  }
+  
+  return (
+    <div className="career-os-error-type-summary">
+      <h4>Error Breakdown</h4>
+      <div className="career-os-error-type-grid">
+        {activeTypes.map(type => (
+          <div key={type} className={`career-os-error-type-item career-os-error-type-${type}`}>
+            <span className="career-os-error-type-icon">{getErrorTypeIcon(type)}</span>
+            <span className="career-os-error-type-count">{summary.byType[type]}</span>
+            <span className="career-os-error-type-label">{getErrorTypeLabel(type)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Error list - displays individual error entries
+ * Requirements: 11.3
+ */
+function ErrorList({ entries }: { entries: ErrorLogEntry[] }): JSX.Element {
+  if (entries.length === 0) {
+    return (
+      <div className="career-os-error-list-empty">
+        <p>No errors recorded.</p>
+      </div>
+    );
+  }
+  
+  // Sort by timestamp descending (most recent first)
+  const sortedEntries = [...entries].sort((a, b) => 
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+  
+  return (
+    <div className="career-os-error-list">
+      <h4>Recent Errors ({entries.length})</h4>
+      <div className="career-os-error-entries">
+        {sortedEntries.map((entry, index) => (
+          <ErrorEntryItem key={`${entry.timestamp}-${index}`} entry={entry} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Single error entry item
+ * Requirements: 11.3
+ */
+function ErrorEntryItem({ entry }: { entry: ErrorLogEntry }): JSX.Element {
+  const formattedTime = formatTimestamp(entry.timestamp);
+  const fileName = entry.path.split('/').pop() || entry.path;
+  
+  return (
+    <div className={`career-os-error-entry career-os-error-entry-${entry.type}`}>
+      <div className="career-os-error-entry-header">
+        <span className="career-os-error-entry-icon">{getErrorTypeIcon(entry.type)}</span>
+        <span className="career-os-error-entry-type">{getErrorTypeLabel(entry.type)}</span>
+        <span className="career-os-error-entry-time">{formattedTime}</span>
+      </div>
+      <div className="career-os-error-entry-path" title={entry.path}>
+        📄 {fileName}
+      </div>
+      <div className="career-os-error-entry-message">
+        {entry.error}
+      </div>
+      {entry.attempts > 0 && (
+        <div className="career-os-error-entry-attempts">
+          Attempts: {entry.attempts}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Format timestamp for display
+ */
+function formatTimestamp(timestamp: string): string {
+  try {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  } catch {
+    return timestamp;
+  }
 }
 
 // ============================================================================
@@ -520,6 +691,7 @@ export interface DashboardAppProps {
   onLoadSelfProfile: () => Promise<SelfProfile | null>;
   onLoadMarketProfiles: () => Promise<MarketProfile[]>;
   onLoadErrorCount: () => Promise<number>;
+  onLoadErrorLog: () => Promise<ErrorLogSummary | null>;
   onRefreshSelfProfile: () => Promise<SelfProfile>;
 }
 

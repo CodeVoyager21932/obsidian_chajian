@@ -12,7 +12,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { SelfProfile, MarketProfile, QueueStatus, SkillProfile, ProjectSummary } from '../types';
+import { SelfProfile, MarketProfile, QueueStatus, SkillProfile, ProjectSummary, ErrorLogSummary } from '../types';
 
 // ============================================================================
 // Types
@@ -36,9 +36,14 @@ export interface DashboardState {
   marketProfiles: MarketProfile[];
   errorCount: number;
   
+  // Error log data
+  errorLogSummary: ErrorLogSummary | null;
+  isErrorLogModalOpen: boolean;
+  
   // Loading states
   isLoading: boolean;
   isRefreshing: boolean;
+  isLoadingErrorLog: boolean;
   
   // Workflow status
   workflowStatus: WorkflowStatus;
@@ -60,6 +65,11 @@ export interface DashboardActions {
   
   // Refresh actions
   refreshSelfProfile: () => Promise<void>;
+  
+  // Error log actions
+  loadErrorLog: () => Promise<void>;
+  openErrorLogModal: () => void;
+  closeErrorLogModal: () => void;
   
   // State setters
   setSelfProfile: (profile: SelfProfile | null) => void;
@@ -96,6 +106,7 @@ export interface DashboardProviderProps {
   onLoadSelfProfile: () => Promise<SelfProfile | null>;
   onLoadMarketProfiles: () => Promise<MarketProfile[]>;
   onLoadErrorCount: () => Promise<number>;
+  onLoadErrorLog: () => Promise<ErrorLogSummary | null>;
   onRefreshSelfProfile: () => Promise<SelfProfile>;
 }
 
@@ -108,14 +119,18 @@ export function DashboardProvider({
   onLoadSelfProfile,
   onLoadMarketProfiles,
   onLoadErrorCount,
+  onLoadErrorLog,
   onRefreshSelfProfile,
 }: DashboardProviderProps): JSX.Element {
   // State
   const [selfProfile, setSelfProfile] = useState<SelfProfile | null>(null);
   const [marketProfiles, setMarketProfiles] = useState<MarketProfile[]>([]);
   const [errorCount, setErrorCount] = useState<number>(0);
+  const [errorLogSummary, setErrorLogSummary] = useState<ErrorLogSummary | null>(null);
+  const [isErrorLogModalOpen, setIsErrorLogModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [isLoadingErrorLog, setIsLoadingErrorLog] = useState<boolean>(false);
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [error, setError] = useState<DashboardError | null>(null);
   const [workflowStatus, setWorkflowStatusState] = useState<WorkflowStatus>({
@@ -189,6 +204,37 @@ export function DashboardProvider({
     }
   }, [onRefreshSelfProfile]);
 
+  // Load error log details
+  const loadErrorLog = useCallback(async () => {
+    setIsLoadingErrorLog(true);
+    
+    try {
+      const summary = await onLoadErrorLog();
+      setErrorLogSummary(summary);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError({
+        message: `Failed to load error log: ${errorMessage}`,
+        timestamp: new Date().toISOString(),
+        type: 'load',
+      });
+    } finally {
+      setIsLoadingErrorLog(false);
+    }
+  }, [onLoadErrorLog]);
+
+  // Open error log modal
+  const openErrorLogModal = useCallback(() => {
+    setIsErrorLogModalOpen(true);
+    // Load error log when modal opens
+    loadErrorLog();
+  }, [loadErrorLog]);
+
+  // Close error log modal
+  const closeErrorLogModal = useCallback(() => {
+    setIsErrorLogModalOpen(false);
+  }, []);
+
   // Update workflow status partially
   const setWorkflowStatus = useCallback((status: Partial<WorkflowStatus>) => {
     setWorkflowStatusState(prev => ({ ...prev, ...status }));
@@ -214,8 +260,11 @@ export function DashboardProvider({
     selfProfile,
     marketProfiles,
     errorCount,
+    errorLogSummary,
+    isErrorLogModalOpen,
     isLoading,
     isRefreshing,
+    isLoadingErrorLog,
     workflowStatus,
     queueStatus,
     error,
@@ -225,6 +274,9 @@ export function DashboardProvider({
     // Actions
     loadDashboardData,
     refreshSelfProfile,
+    loadErrorLog,
+    openErrorLogModal,
+    closeErrorLogModal,
     setSelfProfile,
     setMarketProfiles,
     setErrorCount,

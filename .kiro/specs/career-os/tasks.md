@@ -320,7 +320,9 @@
   - Add refresh button to trigger SelfProfile rebuild
   - _Requirements: 11.4_
 
-- [-] 17. Implement dashboard skills and projects display
+- [x] 17. Implement dashboard skills and projects display
+
+
 
 
 
@@ -330,7 +332,10 @@
   - Add project detail view (click to see full summary)
   - _Requirements: 11.1, 11.2_
 
-- [ ] 18. Implement dashboard error handling display
+- [-] 18. Implement dashboard error handling display
+
+
+
   - Read error_log.md and parse error entries
   - Display error count summary
   - Add "View Error Log" button to show detailed errors

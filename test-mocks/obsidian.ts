@@ -3,7 +3,17 @@
  */
 
 export class TFile {
-  constructor(public path: string, public extension: string) {}
+  path: string;
+  extension: string;
+  basename: string;
+  name: string;
+  
+  constructor(path: string = '', extension: string = 'md') {
+    this.path = path;
+    this.extension = extension;
+    this.basename = path.split('/').pop()?.replace(`.${extension}`, '') || '';
+    this.name = path.split('/').pop() || '';
+  }
 }
 
 export class TFolder {

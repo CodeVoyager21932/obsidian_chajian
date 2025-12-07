@@ -86,7 +86,7 @@ describe('MarketScanner', () => {
       settings.marketCardsDirectory
     );
     promptStore = new PromptStore(app, 'test-plugin-dir');
-    privacyGuard = new PrivacyGuard(settings);
+    privacyGuard = new PrivacyGuard(settings.exclusionRules);
     taxonomy = new Taxonomy(settings.taxonomy); // Pass taxonomy array
     
     scanner = new MarketScanner(
@@ -116,11 +116,7 @@ describe('MarketScanner', () => {
       const { TFile } = await import('./test-mocks/obsidian');
       
       // Create a proper TFile instance
-      const mockFile = new TFile();
-      mockFile.path = 'test.md';
-      mockFile.extension = 'md';
-      mockFile.basename = 'test';
-      mockFile.name = 'test.md';
+      const mockFile = new TFile('test.md', 'md');
       
       // Mock the file system calls
       vi.mocked(app.vault.getAbstractFileByPath).mockReturnValue(mockFile as any);
@@ -204,7 +200,7 @@ describe('MarketScanner', () => {
       vi.spyOn(indexStore, 'listJDCards').mockResolvedValue(mockJDCards);
       vi.spyOn(indexStore, 'writeMarketProfile').mockResolvedValue();
       vi.mocked(app.vault.getAbstractFileByPath).mockReturnValue(null);
-      vi.mocked(app.vault.createFolder).mockResolvedValue();
+      vi.mocked(app.vault.createFolder).mockResolvedValue(undefined as any);
       vi.mocked(app.vault.create).mockResolvedValue({} as any);
 
       const result = await scanner.buildMarketProfile('Python', 'Beijing');
@@ -241,7 +237,7 @@ describe('MarketScanner', () => {
       vi.spyOn(indexStore, 'listJDCards').mockResolvedValue(mockJDCards);
       vi.spyOn(indexStore, 'writeMarketProfile').mockResolvedValue();
       vi.mocked(app.vault.getAbstractFileByPath).mockReturnValue(null);
-      vi.mocked(app.vault.createFolder).mockResolvedValue();
+      vi.mocked(app.vault.createFolder).mockResolvedValue(undefined as any);
       vi.mocked(app.vault.create).mockResolvedValue({} as any);
 
       // Use taxonomy with mappings
@@ -334,7 +330,7 @@ describe('MarketScanner', () => {
       vi.spyOn(indexStore, 'listJDCards').mockResolvedValue(mockJDCards);
       vi.spyOn(indexStore, 'writeMarketProfile').mockResolvedValue();
       vi.mocked(app.vault.getAbstractFileByPath).mockReturnValue(null);
-      vi.mocked(app.vault.createFolder).mockResolvedValue();
+      vi.mocked(app.vault.createFolder).mockResolvedValue(undefined as any);
       vi.mocked(app.vault.create).mockResolvedValue({} as any);
 
       const result = await scanner.buildMarketProfile('Developer', 'Beijing');
@@ -367,7 +363,7 @@ describe('MarketScanner', () => {
       vi.spyOn(indexStore, 'listJDCards').mockResolvedValue(mockJDCards);
       vi.spyOn(indexStore, 'writeMarketProfile').mockResolvedValue();
       vi.mocked(app.vault.getAbstractFileByPath).mockReturnValue(null);
-      vi.mocked(app.vault.createFolder).mockResolvedValue();
+      vi.mocked(app.vault.createFolder).mockResolvedValue(undefined as any);
       vi.mocked(app.vault.create).mockResolvedValue({} as any);
 
       const result = await scanner.buildMarketProfile('Developer', 'Beijing');
@@ -419,7 +415,7 @@ describe('MarketScanner', () => {
       vi.spyOn(indexStore, 'listJDCards').mockResolvedValue(mockJDCards);
       vi.spyOn(indexStore, 'writeMarketProfile').mockResolvedValue();
       vi.mocked(app.vault.getAbstractFileByPath).mockReturnValue(null);
-      vi.mocked(app.vault.createFolder).mockResolvedValue();
+      vi.mocked(app.vault.createFolder).mockResolvedValue(undefined as any);
       vi.mocked(app.vault.create).mockResolvedValue({} as any);
 
       const result = await scanner.buildMarketProfile('Developer', 'Beijing');

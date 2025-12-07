@@ -6,6 +6,7 @@ import { LLMClient, createLLMClient } from './llmClient';
 import { IndexStore } from './IndexStore';
 import { PromptStore, createPromptStore } from './PromptStore';
 import { PrivacyGuard, createPrivacyGuard } from './PrivacyGuard';
+import { CareerOSSettingsTab } from './SettingsTab';
 
 // Default settings
 const DEFAULT_SETTINGS: CareerOSSettings = {
@@ -79,6 +80,9 @@ export default class CareerOSPlugin extends Plugin {
 
     // Register file event listeners
     this.registerFileEvents();
+
+    // Add settings tab
+    this.addSettingTab(new CareerOSSettingsTab(this.app, this));
 
     // Add ribbon icon
     this.addRibbonIcon('briefcase', 'CareerOS Dashboard', () => {

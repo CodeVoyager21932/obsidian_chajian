@@ -49,7 +49,10 @@
   - **Property 12: Pause and resume consistency**
   - **Validates: Requirements 4.4**
 
-- [ ] 3. Implement file service and index store
+- [-] 3. Implement file service and index store
+
+
+
 
 
 

@@ -1,0 +1,422 @@
+/**
+ * CareerOS Dashboard Styles
+ * 
+ * Follows Obsidian's design patterns and CSS variables
+ */
+
+/* ============================================================================
+   Container
+   ============================================================================ */
+
+.career-os-dashboard-container {
+  padding: 0;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.career-os-dashboard {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ============================================================================
+   Header
+   ============================================================================ */
+
+.career-os-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.career-os-header h2 {
+  margin: 0;
+  font-size: 1.5em;
+  color: var(--text-normal);
+}
+
+.career-os-refresh-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.15s ease;
+}
+
+.career-os-refresh-btn:hover:not(:disabled) {
+  background: var(--interactive-hover);
+}
+
+.career-os-refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ============================================================================
+   Error Banner
+   ============================================================================ */
+
+.career-os-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  background: var(--background-modifier-error);
+  border-radius: 6px;
+  color: var(--text-error);
+}
+
+.career-os-error-icon {
+  font-size: 1.2em;
+}
+
+.career-os-error-message {
+  flex: 1;
+}
+
+.career-os-error-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-error);
+  cursor: pointer;
+  font-size: 1.2em;
+  padding: 0 4px;
+}
+
+/* ============================================================================
+   Loading
+   ============================================================================ */
+
+.career-os-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+
+.career-os-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--background-modifier-border);
+  border-top-color: var(--interactive-accent);
+  border-radius: 50%;
+  animation: career-os-spin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes career-os-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ============================================================================
+   Grid Layout
+   ============================================================================ */
+
+.career-os-dashboard-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 800px) {
+  .career-os-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.career-os-main-column,
+.career-os-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ============================================================================
+   Sections
+   ============================================================================ */
+
+.career-os-section {
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.career-os-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 1.1em;
+  color: var(--text-normal);
+}
+
+.career-os-empty-state {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted);
+}
+
+.career-os-empty-state p {
+  margin: 8px 0;
+}
+
+.career-os-hint {
+  font-size: 0.85em;
+  opacity: 0.8;
+}
+
+/* ============================================================================
+   Skills Section
+   ============================================================================ */
+
+.career-os-skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.career-os-skill-item {
+  padding: 10px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.career-os-skill-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.career-os-skill-rank {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  min-width: 24px;
+}
+
+.career-os-skill-name {
+  font-weight: 500;
+  color: var(--text-normal);
+  flex: 1;
+}
+
+.career-os-skill-category {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  background: var(--background-modifier-hover);
+  border-radius: 10px;
+  color: var(--text-muted);
+}
+
+.career-os-skill-bar-container {
+  height: 6px;
+  background: var(--background-modifier-border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.career-os-skill-bar {
+  height: 100%;
+  background: var(--interactive-accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.career-os-skill-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+/* ============================================================================
+   Projects Section
+   ============================================================================ */
+
+.career-os-projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.career-os-project-item {
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.career-os-project-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.career-os-project-name {
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.career-os-project-time {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+.career-os-project-summary {
+  margin: 0 0 10px 0;
+  font-size: 0.9em;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.career-os-project-tech {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.career-os-tech-tag {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-radius: 10px;
+}
+
+.career-os-tech-more {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  border-radius: 10px;
+}
+
+/* ============================================================================
+   Workflow Section
+   ============================================================================ */
+
+.career-os-workflow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.career-os-workflow-step {
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  transition: all 0.2s ease;
+}
+
+.career-os-workflow-step.complete {
+  border-color: var(--interactive-accent);
+}
+
+.career-os-step-indicator {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85em;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.career-os-workflow-step.complete .career-os-step-indicator {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.career-os-step-content {
+  flex: 1;
+}
+
+.career-os-step-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.career-os-step-icon {
+  font-size: 1em;
+}
+
+.career-os-step-label {
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.career-os-step-description {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+/* ============================================================================
+   Error Summary Section
+   ============================================================================ */
+
+.career-os-errors-section.career-os-no-errors {
+  background: var(--background-secondary);
+}
+
+.career-os-errors-section.career-os-has-errors {
+  background: var(--background-modifier-error);
+  border-color: var(--text-error);
+}
+
+.career-os-errors-section.career-os-has-errors h3 {
+  color: var(--text-error);
+}
+
+.career-os-error-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.career-os-error-count {
+  font-size: 2em;
+  font-weight: 600;
+  color: var(--text-error);
+}
+
+.career-os-error-label {
+  color: var(--text-muted);
+}
+
+.career-os-view-errors-btn {
+  width: 100%;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.15s ease;
+}
+
+.career-os-view-errors-btn:hover {
+  background: var(--interactive-hover);
+}

@@ -290,7 +290,9 @@
   - Save plan with frontmatter metadata (role, period, hours, timestamps)
   - _Requirements: 10.1, 10.2, 10.3, 10.4_
 
-- [-] 15. Implement settings tab
+- [x] 15. Implement settings tab
+
+
 
 
 
@@ -306,7 +308,10 @@
   - Display clear warnings for external LLM usage
   - _Requirements: 3.5, 12.1, 12.5, 13.3_
 
-- [ ] 16. Implement dashboard view foundation
+- [-] 16. Implement dashboard view foundation
+
+
+
   - Create DashboardView.tsx with React
   - Set up DashboardContext for state management
   - Create basic layout with sections for skills, projects, and workflow

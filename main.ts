@@ -1,5 +1,5 @@
-import { Plugin, TFile, Notice } from 'obsidian';
-import { CareerOSSettings, QueueStatus } from './types';
+import { Plugin, TFile, Notice, WorkspaceLeaf } from 'obsidian';
+import { CareerOSSettings, QueueStatus, SelfProfile, MarketProfile } from './types';
 import { CareerOSSettingsSchema, CURRENT_SCHEMA_VERSION } from './schema';
 import { ProfileEngine, createProfileEngine } from './ProfileEngine';
 import { LLMClient, createLLMClient } from './llmClient';
@@ -7,6 +7,7 @@ import { IndexStore } from './IndexStore';
 import { PromptStore, createPromptStore } from './PromptStore';
 import { PrivacyGuard, createPrivacyGuard } from './PrivacyGuard';
 import { CareerOSSettingsTab } from './SettingsTab';
+import { DashboardItemView, DASHBOARD_VIEW_TYPE } from './views/DashboardView';
 
 // Default settings
 const DEFAULT_SETTINGS: CareerOSSettings = {
@@ -75,6 +76,9 @@ export default class CareerOSPlugin extends Plugin {
     // Initialize core services
     await this.initializeServices();
 
+    // Register dashboard view
+    this.registerDashboardView();
+
     // Register commands
     this.registerCommands();
 
@@ -86,9 +90,129 @@ export default class CareerOSPlugin extends Plugin {
 
     // Add ribbon icon
     this.addRibbonIcon('briefcase', 'CareerOS Dashboard', () => {
-      console.log('CareerOS Dashboard clicked');
-      // TODO: Open dashboard view
+      this.activateDashboardView();
     });
+  }
+  
+  /**
+   * Register the Dashboard view
+   */
+  private registerDashboardView(): void {
+    this.registerView(
+      DASHBOARD_VIEW_TYPE,
+      (leaf: WorkspaceLeaf) => new DashboardItemView(leaf, {
+        onLoadSelfProfile: () => this.loadSelfProfile(),
+        onLoadMarketProfiles: () => this.loadMarketProfiles(),
+        onLoadErrorCount: () => this.loadErrorCount(),
+        onRefreshSelfProfile: () => this.refreshSelfProfile(),
+      })
+    );
+  }
+  
+  /**
+   * Activate (open) the Dashboard view
+   */
+  async activateDashboardView(): Promise<void> {
+    const { workspace } = this.app;
+    
+    // Check if view is already open
+    let leaf = workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)[0];
+    
+    if (!leaf) {
+      // Create new leaf in right sidebar
+      const rightLeaf = workspace.getRightLeaf(false);
+      if (rightLeaf) {
+        leaf = rightLeaf;
+        await leaf.setViewState({
+          type: DASHBOARD_VIEW_TYPE,
+          active: true,
+        });
+      }
+    }
+    
+    // Reveal the leaf
+    if (leaf) {
+      workspace.revealLeaf(leaf);
+    }
+  }
+  
+  /**
+   * Load SelfProfile from IndexStore
+   */
+  private async loadSelfProfile(): Promise<SelfProfile | null> {
+    if (!this.indexStore) {
+      console.warn('IndexStore not initialized');
+      return null;
+    }
+    
+    try {
+      return await this.indexStore.readSelfProfile();
+    } catch (error) {
+      console.error('Failed to load SelfProfile:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Load all MarketProfiles from IndexStore
+   */
+  private async loadMarketProfiles(): Promise<MarketProfile[]> {
+    if (!this.indexStore) {
+      console.warn('IndexStore not initialized');
+      return [];
+    }
+    
+    try {
+      return await this.indexStore.listMarketProfiles();
+    } catch (error) {
+      console.error('Failed to load MarketProfiles:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Load error count from error log
+   */
+  private async loadErrorCount(): Promise<number> {
+    try {
+      const errorLogPath = `${this.pluginDataDir}/error_log.md`;
+      const file = this.app.vault.getAbstractFileByPath(errorLogPath);
+      
+      if (!file || !(file instanceof TFile)) {
+        return 0;
+      }
+      
+      const content = await this.app.vault.read(file);
+      // Count error entries (each starts with "## ")
+      const matches = content.match(/^## \d{4}-\d{2}-\d{2}/gm);
+      return matches ? matches.length : 0;
+    } catch (error) {
+      console.error('Failed to load error count:', error);
+      return 0;
+    }
+  }
+  
+  /**
+   * Refresh (rebuild) SelfProfile
+   * 
+   * Requirements: 11.4 - Refresh button triggers SelfProfile rebuild
+   */
+  private async refreshSelfProfile(): Promise<SelfProfile> {
+    if (!this.profileEngine) {
+      throw new Error('ProfileEngine not initialized');
+    }
+    
+    new Notice('Building Self Profile...');
+    
+    try {
+      const profile = await this.profileEngine.buildSelfProfile();
+      new Notice('Self Profile built successfully!');
+      return profile;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to build Self Profile: ${errorMessage}`);
+      throw error;
+    }
   }
   
   /**
@@ -258,8 +382,7 @@ export default class CareerOSPlugin extends Plugin {
       id: 'open-dashboard',
       name: 'Open Dashboard',
       callback: () => {
-        console.log('Open Dashboard command triggered');
-        // TODO: Implement dashboard view
+        this.activateDashboardView();
       },
     });
 

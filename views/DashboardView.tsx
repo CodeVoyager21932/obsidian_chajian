@@ -390,18 +390,58 @@ function TechStackItem({ tech }: { tech: TechItem }): JSX.Element {
 }
 
 /**
- * Workflow section - shows completion status for each step
+ * Workflow step configuration
+ */
+interface WorkflowStep {
+  id: 'self-profile' | 'market-profile' | 'action-plan';
+  label: string;
+  description: string;
+  complete: boolean;
+  icon: string;
+  actionLabel: string;
+  guidanceText: string;
+  isLoading: boolean;
+  onAction: () => void;
+  isDisabled: boolean;
+}
+
+/**
+ * Workflow section - shows completion status for each step with action buttons
+ * Requirements: 11.5
  */
 function WorkflowSection(): JSX.Element {
-  const { workflowStatus } = useDashboard();
+  const { 
+    workflowStatus, 
+    indexNotes, 
+    extractJDs, 
+    generatePlan,
+    isIndexingNotes,
+    isExtractingJDs,
+    isGeneratingPlan,
+  } = useDashboard();
   
-  const steps = [
+  // Determine current step (first incomplete step)
+  const getCurrentStep = (): 'self-profile' | 'market-profile' | 'action-plan' | 'complete' => {
+    if (!workflowStatus.selfProfileComplete) return 'self-profile';
+    if (!workflowStatus.marketProfileComplete) return 'market-profile';
+    if (!workflowStatus.actionPlanComplete) return 'action-plan';
+    return 'complete';
+  };
+  
+  const currentStep = getCurrentStep();
+  
+  const steps: WorkflowStep[] = [
     {
       id: 'self-profile',
       label: 'Self Profile',
       description: 'Index your notes and build capability profile',
       complete: workflowStatus.selfProfileComplete,
       icon: '👤',
+      actionLabel: 'Index Notes',
+      guidanceText: 'Start by indexing your notes to extract skills and experiences. This will build your capability profile.',
+      isLoading: isIndexingNotes,
+      onAction: indexNotes,
+      isDisabled: isIndexingNotes || isExtractingJDs || isGeneratingPlan,
     },
     {
       id: 'market-profile',
@@ -409,6 +449,11 @@ function WorkflowSection(): JSX.Element {
       description: 'Extract JDs and build market demand profile',
       complete: workflowStatus.marketProfileComplete,
       icon: '📊',
+      actionLabel: 'Extract JDs',
+      guidanceText: 'Add job descriptions to a note and extract them to understand market demands for your target role.',
+      isLoading: isExtractingJDs,
+      onAction: extractJDs,
+      isDisabled: isIndexingNotes || isExtractingJDs || isGeneratingPlan,
     },
     {
       id: 'action-plan',
@@ -416,30 +461,118 @@ function WorkflowSection(): JSX.Element {
       description: 'Generate gap analysis and action plan',
       complete: workflowStatus.actionPlanComplete,
       icon: '📋',
+      actionLabel: 'Generate Plan',
+      guidanceText: 'Generate a personalized action plan based on the gap between your skills and market demands.',
+      isLoading: isGeneratingPlan,
+      onAction: generatePlan,
+      isDisabled: isIndexingNotes || isExtractingJDs || isGeneratingPlan || !workflowStatus.selfProfileComplete || !workflowStatus.marketProfileComplete,
     },
   ];
   
   return (
     <div className="career-os-section career-os-workflow-section">
-      <h3>🚀 Workflow</h3>
+      <h3>🚀 Guided Workflow</h3>
+      
+      {/* Current step guidance */}
+      {currentStep !== 'complete' && (
+        <CurrentStepGuidance 
+          step={steps.find(s => s.id === currentStep)!} 
+        />
+      )}
+      
+      {/* Completion message */}
+      {currentStep === 'complete' && (
+        <div className="career-os-workflow-complete">
+          <span className="career-os-complete-icon">🎉</span>
+          <p>All steps completed! You can regenerate any step by clicking its action button.</p>
+        </div>
+      )}
+      
+      {/* Workflow steps */}
       <div className="career-os-workflow-steps">
         {steps.map((step, index) => (
-          <div 
+          <WorkflowStepItem 
             key={step.id} 
-            className={`career-os-workflow-step ${step.complete ? 'complete' : ''}`}
-          >
-            <div className="career-os-step-indicator">
-              {step.complete ? '✓' : index + 1}
-            </div>
-            <div className="career-os-step-content">
-              <div className="career-os-step-header">
-                <span className="career-os-step-icon">{step.icon}</span>
-                <span className="career-os-step-label">{step.label}</span>
-              </div>
-              <p className="career-os-step-description">{step.description}</p>
-            </div>
-          </div>
+            step={step} 
+            stepNumber={index + 1}
+            isCurrent={currentStep === step.id}
+          />
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Current step guidance component
+ * Requirements: 11.5 - Display current step with helpful guidance text
+ */
+function CurrentStepGuidance({ step }: { step: WorkflowStep }): JSX.Element {
+  return (
+    <div className="career-os-current-step-guidance">
+      <div className="career-os-guidance-header">
+        <span className="career-os-guidance-icon">💡</span>
+        <span className="career-os-guidance-title">Next Step: {step.label}</span>
+      </div>
+      <p className="career-os-guidance-text">{step.guidanceText}</p>
+    </div>
+  );
+}
+
+/**
+ * Single workflow step item with action button
+ * Requirements: 11.5
+ */
+interface WorkflowStepItemProps {
+  step: WorkflowStep;
+  stepNumber: number;
+  isCurrent: boolean;
+}
+
+function WorkflowStepItem({ step, stepNumber, isCurrent }: WorkflowStepItemProps): JSX.Element {
+  const stepClasses = [
+    'career-os-workflow-step',
+    step.complete ? 'complete' : '',
+    isCurrent ? 'current' : '',
+  ].filter(Boolean).join(' ');
+  
+  return (
+    <div className={stepClasses}>
+      <div className="career-os-step-indicator">
+        {step.complete ? '✓' : stepNumber}
+      </div>
+      <div className="career-os-step-content">
+        <div className="career-os-step-header">
+          <span className="career-os-step-icon">{step.icon}</span>
+          <span className="career-os-step-label">{step.label}</span>
+          {step.complete && (
+            <span className="career-os-step-status-badge complete">Complete</span>
+          )}
+          {isCurrent && !step.complete && (
+            <span className="career-os-step-status-badge current">Current</span>
+          )}
+        </div>
+        <p className="career-os-step-description">{step.description}</p>
+        
+        {/* Action button */}
+        <button
+          className={`career-os-step-action-btn ${step.isLoading ? 'loading' : ''}`}
+          onClick={step.onAction}
+          disabled={step.isDisabled}
+          title={step.isDisabled && !step.isLoading ? 'Complete previous steps first' : step.actionLabel}
+        >
+          {step.isLoading ? (
+            <>
+              <span className="career-os-btn-spinner"></span>
+              Processing...
+            </>
+          ) : (
+            <>
+              {step.complete ? '↻ ' : '▶ '}
+              {step.actionLabel}
+            </>
+          )}
+        </button>
       </div>
     </div>
   );
@@ -693,6 +826,12 @@ export interface DashboardAppProps {
   onLoadErrorCount: () => Promise<number>;
   onLoadErrorLog: () => Promise<ErrorLogSummary | null>;
   onRefreshSelfProfile: () => Promise<SelfProfile>;
+  
+  // Workflow action callbacks
+  onIndexNotes?: () => Promise<void>;
+  onExtractJDs?: () => Promise<void>;
+  onGeneratePlan?: () => Promise<void>;
+  onCheckActionPlans?: () => Promise<boolean>;
 }
 
 /**

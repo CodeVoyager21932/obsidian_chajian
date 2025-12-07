@@ -85,9 +85,25 @@ export interface DashboardActions {
   // Detail view actions
   selectSkill: (skill: SkillProfile | null) => void;
   selectProject: (project: ProjectSummary | null) => void;
+  
+  // Workflow actions
+  indexNotes: () => Promise<void>;
+  extractJDs: () => Promise<void>;
+  generatePlan: () => Promise<void>;
+  
+  // Workflow action loading states
+  isIndexingNotes: boolean;
+  isExtractingJDs: boolean;
+  isGeneratingPlan: boolean;
 }
 
-export interface DashboardContextValue extends DashboardState, DashboardActions {}
+export interface WorkflowActionStates {
+  isIndexingNotes: boolean;
+  isExtractingJDs: boolean;
+  isGeneratingPlan: boolean;
+}
+
+export interface DashboardContextValue extends DashboardState, Omit<DashboardActions, 'isIndexingNotes' | 'isExtractingJDs' | 'isGeneratingPlan'>, WorkflowActionStates {}
 
 // ============================================================================
 // Context
@@ -108,6 +124,12 @@ export interface DashboardProviderProps {
   onLoadErrorCount: () => Promise<number>;
   onLoadErrorLog: () => Promise<ErrorLogSummary | null>;
   onRefreshSelfProfile: () => Promise<SelfProfile>;
+  
+  // Workflow action callbacks
+  onIndexNotes?: () => Promise<void>;
+  onExtractJDs?: () => Promise<void>;
+  onGeneratePlan?: () => Promise<void>;
+  onCheckActionPlans?: () => Promise<boolean>;
 }
 
 // ============================================================================
@@ -121,6 +143,10 @@ export function DashboardProvider({
   onLoadErrorCount,
   onLoadErrorLog,
   onRefreshSelfProfile,
+  onIndexNotes,
+  onExtractJDs,
+  onGeneratePlan,
+  onCheckActionPlans,
 }: DashboardProviderProps): JSX.Element {
   // State
   const [selfProfile, setSelfProfile] = useState<SelfProfile | null>(null);
@@ -142,6 +168,11 @@ export function DashboardProvider({
   // Detail view states
   const [selectedSkill, setSelectedSkill] = useState<SkillProfile | null>(null);
   const [selectedProject, setSelectedProject] = useState<ProjectSummary | null>(null);
+  
+  // Workflow action loading states
+  const [isIndexingNotes, setIsIndexingNotes] = useState<boolean>(false);
+  const [isExtractingJDs, setIsExtractingJDs] = useState<boolean>(false);
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState<boolean>(false);
 
   // Load all dashboard data
   const loadDashboardData = useCallback(async () => {
@@ -156,6 +187,16 @@ export function DashboardProvider({
         onLoadErrorCount(),
       ]);
       
+      // Check for action plans if callback provided
+      let hasActionPlans = false;
+      if (onCheckActionPlans) {
+        try {
+          hasActionPlans = await onCheckActionPlans();
+        } catch {
+          // Ignore errors checking action plans
+        }
+      }
+      
       setSelfProfile(profile);
       setMarketProfiles(profiles);
       setErrorCount(errors);
@@ -164,7 +205,7 @@ export function DashboardProvider({
       setWorkflowStatusState({
         selfProfileComplete: profile !== null,
         marketProfileComplete: profiles.length > 0,
-        actionPlanComplete: false, // TODO: Check for action plans
+        actionPlanComplete: hasActionPlans,
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -176,7 +217,7 @@ export function DashboardProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [onLoadSelfProfile, onLoadMarketProfiles, onLoadErrorCount]);
+  }, [onLoadSelfProfile, onLoadMarketProfiles, onLoadErrorCount, onCheckActionPlans]);
 
   // Refresh self profile (rebuild from NoteCards)
   const refreshSelfProfile = useCallback(async () => {
@@ -253,6 +294,96 @@ export function DashboardProvider({
   const selectProject = useCallback((project: ProjectSummary | null) => {
     setSelectedProject(project);
   }, []);
+  
+  // Workflow action: Index Notes
+  const indexNotes = useCallback(async () => {
+    if (!onIndexNotes) {
+      setError({
+        message: 'Index Notes action not available',
+        timestamp: new Date().toISOString(),
+        type: 'action',
+      });
+      return;
+    }
+    
+    setIsIndexingNotes(true);
+    setError(null);
+    
+    try {
+      await onIndexNotes();
+      // Reload data after indexing
+      await loadDashboardData();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError({
+        message: `Failed to index notes: ${errorMessage}`,
+        timestamp: new Date().toISOString(),
+        type: 'action',
+      });
+    } finally {
+      setIsIndexingNotes(false);
+    }
+  }, [onIndexNotes, loadDashboardData]);
+  
+  // Workflow action: Extract JDs
+  const extractJDs = useCallback(async () => {
+    if (!onExtractJDs) {
+      setError({
+        message: 'Extract JDs action not available',
+        timestamp: new Date().toISOString(),
+        type: 'action',
+      });
+      return;
+    }
+    
+    setIsExtractingJDs(true);
+    setError(null);
+    
+    try {
+      await onExtractJDs();
+      // Reload data after extraction
+      await loadDashboardData();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError({
+        message: `Failed to extract JDs: ${errorMessage}`,
+        timestamp: new Date().toISOString(),
+        type: 'action',
+      });
+    } finally {
+      setIsExtractingJDs(false);
+    }
+  }, [onExtractJDs, loadDashboardData]);
+  
+  // Workflow action: Generate Plan
+  const generatePlan = useCallback(async () => {
+    if (!onGeneratePlan) {
+      setError({
+        message: 'Generate Plan action not available',
+        timestamp: new Date().toISOString(),
+        type: 'action',
+      });
+      return;
+    }
+    
+    setIsGeneratingPlan(true);
+    setError(null);
+    
+    try {
+      await onGeneratePlan();
+      // Reload data after plan generation
+      await loadDashboardData();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError({
+        message: `Failed to generate plan: ${errorMessage}`,
+        timestamp: new Date().toISOString(),
+        type: 'action',
+      });
+    } finally {
+      setIsGeneratingPlan(false);
+    }
+  }, [onGeneratePlan, loadDashboardData]);
 
   // Context value
   const value: DashboardContextValue = {
@@ -271,6 +402,11 @@ export function DashboardProvider({
     selectedSkill,
     selectedProject,
     
+    // Workflow action loading states
+    isIndexingNotes,
+    isExtractingJDs,
+    isGeneratingPlan,
+    
     // Actions
     loadDashboardData,
     refreshSelfProfile,
@@ -286,6 +422,11 @@ export function DashboardProvider({
     clearError,
     selectSkill,
     selectProject,
+    
+    // Workflow actions
+    indexNotes,
+    extractJDs,
+    generatePlan,
   };
 
   return (

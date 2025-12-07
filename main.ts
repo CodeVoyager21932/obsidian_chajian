@@ -107,6 +107,10 @@ export default class CareerOSPlugin extends Plugin {
         onLoadErrorCount: () => this.loadErrorCount(),
         onLoadErrorLog: () => this.loadErrorLog(),
         onRefreshSelfProfile: () => this.refreshSelfProfile(),
+        onIndexNotes: () => this.runColdStartIndexingAsync(),
+        onExtractJDs: () => this.extractJDsFromCurrentNote(),
+        onGeneratePlan: () => this.generateActionPlan(),
+        onCheckActionPlans: () => this.checkActionPlansExist(),
       })
     );
   }
@@ -548,6 +552,187 @@ export default class CareerOSPlugin extends Plugin {
       }
     } catch (error) {
       console.error(`Failed to handle note deletion: ${notePath}`, error);
+    }
+  }
+  
+  /**
+   * Run cold start indexing (async version for dashboard)
+   * Returns a promise that resolves when indexing is complete
+   * 
+   * Requirements: 11.5 - Workflow action for Index Notes
+   */
+  private async runColdStartIndexingAsync(): Promise<void> {
+    await this.runColdStartIndexing();
+    // After indexing, build the self profile
+    if (this.profileEngine) {
+      await this.profileEngine.buildSelfProfile();
+    }
+  }
+  
+  /**
+   * Extract JDs from current note
+   * 
+   * Requirements: 11.5 - Workflow action for Extract JDs
+   */
+  private async extractJDsFromCurrentNote(): Promise<void> {
+    const activeFile = this.app.workspace.getActiveFile();
+    
+    if (!activeFile) {
+      new Notice('No active note. Please open a note containing job descriptions.');
+      throw new Error('No active note');
+    }
+    
+    if (activeFile.extension !== 'md') {
+      new Notice('Active file is not a markdown note.');
+      throw new Error('Not a markdown file');
+    }
+    
+    new Notice('Extracting JD cards from current note...');
+    
+    try {
+      // Import MarketScanner dynamically to avoid circular dependencies
+      const { createMarketScanner } = await import('./MarketScanner');
+      const { Taxonomy } = await import('./Taxonomy');
+      
+      if (!this.llmClient || !this.indexStore || !this.promptStore || !this.privacyGuard) {
+        throw new Error('Required services not initialized');
+      }
+      
+      // Create taxonomy instance
+      const taxonomy = new Taxonomy(this.settings.taxonomy);
+      
+      const marketScanner = createMarketScanner(
+        this.app,
+        this.settings,
+        this.llmClient,
+        this.indexStore,
+        this.promptStore,
+        this.privacyGuard,
+        taxonomy
+      );
+      
+      const result = await marketScanner.extractJDCards(activeFile.path);
+      
+      if (!result.success) {
+        new Notice(`Failed to extract JDs: ${result.error}`);
+        throw new Error(result.error);
+      }
+      
+      if (result.cards.length === 0) {
+        new Notice('No job descriptions found in the current note.');
+      } else {
+        new Notice(`Extracted ${result.cards.length} JD card(s) successfully! (${result.newCards} new, ${result.updatedCards} updated)`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to extract JDs: ${errorMessage}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Generate action plan
+   * 
+   * Requirements: 11.5 - Workflow action for Generate Plan
+   */
+  private async generateActionPlan(): Promise<void> {
+    new Notice('Generating action plan...');
+    
+    try {
+      // Import StrategyCore dynamically
+      const { createStrategyCore } = await import('./StrategyCore');
+      
+      if (!this.llmClient || !this.indexStore || !this.promptStore) {
+        throw new Error('Required services not initialized');
+      }
+      
+      const strategyCore = createStrategyCore(
+        this.app,
+        this.settings,
+        this.llmClient,
+        this.indexStore,
+        this.promptStore,
+        this.pluginDataDir
+      );
+      
+      // Load self profile
+      const selfProfile = await this.indexStore.readSelfProfile();
+      if (!selfProfile) {
+        new Notice('No self profile found. Please index your notes first.');
+        throw new Error('No self profile');
+      }
+      
+      // Load market profiles
+      const marketProfiles = await this.indexStore.listMarketProfiles();
+      if (marketProfiles.length === 0) {
+        new Notice('No market profile found. Please extract JDs first.');
+        throw new Error('No market profile');
+      }
+      
+      // Use the first market profile for now
+      // TODO: Let user select which market profile to use
+      const marketProfile = await this.indexStore.readMarketProfile(
+        marketProfiles[0].role,
+        marketProfiles[0].location
+      );
+      
+      if (!marketProfile) {
+        throw new Error('Failed to load market profile');
+      }
+      
+      // Generate gap analysis first
+      const gapResult = await strategyCore.analyzeGap(selfProfile, marketProfile);
+      
+      if (!gapResult.success || !gapResult.gapAnalysis) {
+        new Notice(`Gap analysis failed: ${gapResult.error}`);
+        throw new Error(gapResult.error || 'Gap analysis failed');
+      }
+      
+      // Generate action plan with default constraints
+      // TODO: Let user configure these constraints
+      const planResult = await strategyCore.generatePlan({
+        targetRole: marketProfile.role,
+        location: marketProfile.location,
+        periodMonths: 3,
+        weeklyHours: 10,
+      });
+      
+      if (!planResult.success) {
+        new Notice(`Plan generation failed: ${planResult.error}`);
+        throw new Error(planResult.error || 'Plan generation failed');
+      }
+      
+      new Notice(`Action plan generated! Match: ${gapResult.gapAnalysis.matchPercentage}%`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to generate plan: ${errorMessage}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Check if any action plans exist
+   * 
+   * Requirements: 11.5 - Check workflow completion status
+   */
+  private async checkActionPlansExist(): Promise<boolean> {
+    try {
+      const mappingDir = `${this.pluginDataDir}/${this.settings.mappingDirectory}`;
+      const folder = this.app.vault.getAbstractFileByPath(mappingDir);
+      
+      if (!folder) {
+        return false;
+      }
+      
+      // Check for plan files (files starting with "plan_")
+      const files = this.app.vault.getFiles().filter(f => 
+        f.path.startsWith(mappingDir) && f.name.startsWith('plan_')
+      );
+      
+      return files.length > 0;
+    } catch (error) {
+      console.error('Failed to check action plans:', error);
+      return false;
     }
   }
   

@@ -332,7 +332,9 @@
   - Add project detail view (click to see full summary)
   - _Requirements: 11.1, 11.2_
 
-- [-] 18. Implement dashboard error handling display
+- [x] 18. Implement dashboard error handling display
+
+
 
 
 
@@ -342,7 +344,11 @@
   - Highlight errors by type (extraction, validation, file operation)
   - _Requirements: 11.3_
 
-- [ ] 19. Implement dashboard guided workflow
+- [x] 19. Implement dashboard guided workflow
+
+
+
+
   - Create workflow status indicators (self-profile, market-profile, plan)
   - Show completion checkmarks for completed steps
   - Add action buttons for each step (Index Notes, Extract JDs, Generate Plan)

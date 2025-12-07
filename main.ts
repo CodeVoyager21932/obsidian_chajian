@@ -123,6 +123,11 @@ export default class CareerOSPlugin extends Plugin {
 
   onunload() {
     console.log('Unloading CareerOS plugin');
+    
+    // Clean up debounce timers
+    if (this.profileEngine) {
+      this.profileEngine.clearDebounceTimers();
+    }
   }
 
   async loadSettings() {
@@ -294,26 +299,92 @@ export default class CareerOSPlugin extends Plugin {
     );
   }
 
+  /**
+   * Handle note saved event
+   * 
+   * Requirements: 2.1, 2.2
+   * - Calculate content hash and compare with existing NoteCard
+   * - Add note to queue when hash differs
+   */
   async onNoteSaved(notePath: string) {
+    if (!this.profileEngine) {
+      console.warn('ProfileEngine not initialized, skipping note save handling');
+      return;
+    }
+    
     console.log(`Note saved: ${notePath}`);
-    // TODO: Implement incremental update logic
-    // 1. Calculate content hash
-    // 2. Compare with existing NoteCard hash
-    // 3. If different, add to processing queue
+    
+    try {
+      const result = await this.profileEngine.handleNoteSaved(notePath);
+      
+      switch (result.action) {
+        case 'queued':
+          console.log(`Note queued for re-extraction: ${notePath} (${result.reason})`);
+          break;
+        case 'skipped':
+          console.log(`Note skipped: ${notePath} (${result.reason})`);
+          break;
+        case 'error':
+          console.error(`Error handling note save: ${notePath} - ${result.reason}`);
+          break;
+      }
+    } catch (error) {
+      console.error(`Failed to handle note save: ${notePath}`, error);
+    }
   }
 
+  /**
+   * Handle note renamed/moved event
+   * 
+   * Requirements: 2.3
+   * - Update NoteCard path and relocate card file
+   */
   async onNoteRenamed(oldPath: string, newPath: string) {
+    if (!this.profileEngine) {
+      console.warn('ProfileEngine not initialized, skipping note rename handling');
+      return;
+    }
+    
     console.log(`Note renamed: ${oldPath} -> ${newPath}`);
-    // TODO: Implement rename handling
-    // 1. Update NoteCard path
-    // 2. Relocate card file
+    
+    try {
+      const result = await this.profileEngine.handleNoteRenamed(oldPath, newPath);
+      
+      if (result.success) {
+        console.log(`NoteCard path updated: ${oldPath} -> ${newPath}`);
+      } else {
+        console.error(`Failed to update NoteCard path: ${result.error}`);
+      }
+    } catch (error) {
+      console.error(`Failed to handle note rename: ${oldPath} -> ${newPath}`, error);
+    }
   }
 
+  /**
+   * Handle note deleted event
+   * 
+   * Requirements: 2.4
+   * - Mark NoteCard as deleted without physically removing the card file
+   */
   async onNoteDeleted(notePath: string) {
+    if (!this.profileEngine) {
+      console.warn('ProfileEngine not initialized, skipping note delete handling');
+      return;
+    }
+    
     console.log(`Note deleted: ${notePath}`);
-    // TODO: Implement deletion handling
-    // 1. Mark NoteCard as deleted
-    // 2. Don't physically remove card file
+    
+    try {
+      const result = await this.profileEngine.handleNoteDeleted(notePath);
+      
+      if (result.success) {
+        console.log(`NoteCard marked as deleted: ${notePath}`);
+      } else {
+        console.error(`Failed to mark NoteCard as deleted: ${result.error}`);
+      }
+    } catch (error) {
+      console.error(`Failed to handle note deletion: ${notePath}`, error);
+    }
   }
   
   /**

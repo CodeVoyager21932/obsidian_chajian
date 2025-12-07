@@ -150,7 +150,9 @@
   - **Property 15: Schema validation retry**
   - **Validates: Requirements 5.3, 5.4**
 
-- [-] 7. Implement cold start indexing
+- [x] 7. Implement cold start indexing
+
+
 
 
 
@@ -166,7 +168,11 @@
   - **Property 24: Dry-run isolation**
   - **Validates: Requirements 15.1, 15.3**
 
-- [ ] 8. Implement incremental update handling
+- [x] 8. Implement incremental update handling
+
+
+
+
   - Add file event listeners (onNoteSaved, onNoteRenamed, onNoteDeleted)
   - Implement hash comparison to detect content changes
   - Add notes to queue when hash differs

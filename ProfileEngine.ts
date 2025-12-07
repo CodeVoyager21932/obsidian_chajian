@@ -8,15 +8,16 @@
  * - Schema validation with retry logic
  * - Error handling and logging
  * - Cold start indexing with concurrent processing
+ * - Incremental update handling (file save, rename, delete)
  * 
- * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.1, 4.2, 4.3, 5.2, 5.3, 5.4, 15.1, 15.2, 15.3
+ * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 4.1, 4.2, 4.3, 5.2, 5.3, 5.4, 15.1, 15.2, 15.3
  */
 
 import { App, TFile, TFolder, normalizePath } from 'obsidian';
 import { z } from 'zod';
-import { NoteCard, CareerOSSettings, NoteType, IndexOptions, IndexResult, Task, QueueStatus } from './types';
+import { NoteCard, CareerOSSettings, IndexOptions, IndexResult, Task, QueueStatus } from './types';
 import { NoteCardSchema, CURRENT_SCHEMA_VERSION } from './schema';
-import { LLMClient, LLMError } from './llmClient';
+import { LLMClient } from './llmClient';
 import { IndexStore } from './IndexStore';
 import { PromptStore, getNoteCardPrompt } from './PromptStore';
 import { PrivacyGuard } from './PrivacyGuard';
@@ -68,6 +69,34 @@ export interface DryRunResult {
   skippedNotes: number;
   failedNotes: number;
   results: DryRunNoteResult[];
+}
+
+/**
+ * Incremental update result
+ */
+export interface IncrementalUpdateResult {
+  action: 'queued' | 'skipped' | 'error';
+  reason?: string;
+  notePath: string;
+}
+
+/**
+ * File rename result
+ */
+export interface FileRenameResult {
+  success: boolean;
+  oldPath: string;
+  newPath: string;
+  error?: string;
+}
+
+/**
+ * File delete result
+ */
+export interface FileDeleteResult {
+  success: boolean;
+  notePath: string;
+  error?: string;
 }
 
 // Schema for LLM extraction output (without hash and detected_date which we set)
@@ -1040,6 +1069,320 @@ export class ProfileEngine {
    */
   isIndexingPaused(): boolean {
     return this.currentQueueManager?.isPaused() ?? false;
+  }
+
+  // ============================================================================
+  // Incremental Update Handling
+  // Requirements: 2.1, 2.2, 2.3, 2.4, 2.5
+  // ============================================================================
+
+  /**
+   * Debounce map to prevent rapid re-indexing
+   * Key: note path, Value: timeout ID
+   */
+  private debounceMap: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  
+  /**
+   * Debounce delay in milliseconds
+   */
+  private readonly DEBOUNCE_DELAY = 2000;
+
+  /**
+   * Incremental update queue manager (separate from cold start)
+   */
+  private incrementalQueueManager?: QueueManager;
+
+  /**
+   * Handle note saved event
+   * 
+   * Requirements:
+   * - 2.1: Calculate content hash and compare with existing NoteCard
+   * - 2.2: Add note to queue when hash differs
+   * 
+   * Property 5: Incremental update correctness
+   * 
+   * @param notePath - Path to the saved note
+   * @returns IncrementalUpdateResult
+   */
+  async handleNoteSaved(notePath: string): Promise<IncrementalUpdateResult> {
+    const normalizedPath = normalizePath(notePath);
+    
+    // Apply debouncing to prevent rapid re-indexing
+    const existingTimeout = this.debounceMap.get(normalizedPath);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+    
+    return new Promise((resolve) => {
+      const timeoutId = setTimeout(async () => {
+        this.debounceMap.delete(normalizedPath);
+        const result = await this.processNoteSavedDebounced(normalizedPath);
+        resolve(result);
+      }, this.DEBOUNCE_DELAY);
+      
+      this.debounceMap.set(normalizedPath, timeoutId);
+    });
+  }
+
+  /**
+   * Process note saved after debounce delay
+   */
+  private async processNoteSavedDebounced(notePath: string): Promise<IncrementalUpdateResult> {
+    try {
+      // Get the file
+      const file = this.app.vault.getAbstractFileByPath(notePath);
+      if (!file || !(file instanceof TFile)) {
+        return {
+          action: 'error',
+          reason: `File not found: ${notePath}`,
+          notePath,
+        };
+      }
+      
+      // Read content and calculate hash
+      const content = await this.app.vault.read(file);
+      
+      // Extract tags for exclusion check
+      const tags = this.extractTags(content);
+      
+      // Check exclusion rules (Property 9)
+      if (this.privacyGuard.shouldExclude(notePath, tags)) {
+        return {
+          action: 'skipped',
+          reason: 'Note excluded by privacy rules',
+          notePath,
+        };
+      }
+      
+      const currentHash = calculateContentHash(content);
+      
+      // Get existing card (Requirement 2.1)
+      const existingCard = await this.indexStore.readNoteCard(notePath);
+      
+      // Compare hashes (Requirement 2.1)
+      if (existingCard && existingCard.hash === currentHash) {
+        return {
+          action: 'skipped',
+          reason: 'Content unchanged (hash match)',
+          notePath,
+        };
+      }
+      
+      // Hash differs or no existing card - add to queue (Requirement 2.2)
+      await this.addToIncrementalQueue(notePath);
+      
+      return {
+        action: 'queued',
+        reason: existingCard ? 'Content changed (hash mismatch)' : 'New note',
+        notePath,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        action: 'error',
+        reason: errorMessage,
+        notePath,
+      };
+    }
+  }
+
+  /**
+   * Handle note renamed/moved event
+   * 
+   * Requirements:
+   * - 2.3: Update NoteCard path and relocate card file
+   * 
+   * Property 6: File operation state consistency
+   * 
+   * @param oldPath - Original path of the note
+   * @param newPath - New path of the note
+   * @returns FileRenameResult
+   */
+  async handleNoteRenamed(oldPath: string, newPath: string): Promise<FileRenameResult> {
+    const normalizedOldPath = normalizePath(oldPath);
+    const normalizedNewPath = normalizePath(newPath);
+    
+    try {
+      // Read existing card
+      const existingCard = await this.indexStore.readNoteCard(normalizedOldPath);
+      
+      if (!existingCard) {
+        // No existing card, nothing to update
+        // But we should queue the new path for extraction
+        await this.addToIncrementalQueue(normalizedNewPath);
+        
+        return {
+          success: true,
+          oldPath: normalizedOldPath,
+          newPath: normalizedNewPath,
+        };
+      }
+      
+      // Update card with new path
+      const updatedCard: NoteCard = {
+        ...existingCard,
+        note_path: normalizedNewPath,
+        detected_date: new Date().toISOString(),
+      };
+      
+      // Write card to new location
+      await this.indexStore.writeNoteCard(updatedCard);
+      
+      // Delete old card file
+      await this.indexStore.deleteNoteCard(normalizedOldPath);
+      
+      console.log(`NoteCard relocated: ${normalizedOldPath} -> ${normalizedNewPath}`);
+      
+      return {
+        success: true,
+        oldPath: normalizedOldPath,
+        newPath: normalizedNewPath,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to handle note rename: ${errorMessage}`);
+      
+      return {
+        success: false,
+        oldPath: normalizedOldPath,
+        newPath: normalizedNewPath,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Handle note deleted event
+   * 
+   * Requirements:
+   * - 2.4: Mark NoteCard as deleted without physically removing the card file
+   * 
+   * Property 6: File operation state consistency
+   * 
+   * @param notePath - Path of the deleted note
+   * @returns FileDeleteResult
+   */
+  async handleNoteDeleted(notePath: string): Promise<FileDeleteResult> {
+    const normalizedPath = normalizePath(notePath);
+    
+    try {
+      // Read existing card
+      const existingCard = await this.indexStore.readNoteCard(normalizedPath);
+      
+      if (!existingCard) {
+        // No existing card, nothing to mark as deleted
+        return {
+          success: true,
+          notePath: normalizedPath,
+        };
+      }
+      
+      // Mark card as deleted (logical deletion)
+      const updatedCard: NoteCard = {
+        ...existingCard,
+        deleted: true,
+        detected_date: new Date().toISOString(),
+      };
+      
+      // Write updated card (don't physically remove)
+      await this.indexStore.writeNoteCard(updatedCard);
+      
+      console.log(`NoteCard marked as deleted: ${normalizedPath}`);
+      
+      return {
+        success: true,
+        notePath: normalizedPath,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to handle note deletion: ${errorMessage}`);
+      
+      return {
+        success: false,
+        notePath: normalizedPath,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Add note to incremental processing queue
+   * 
+   * Uses a separate queue from cold start to allow concurrent operations
+   */
+  private async addToIncrementalQueue(notePath: string): Promise<void> {
+    // Initialize incremental queue if not exists
+    if (!this.incrementalQueueManager) {
+      this.incrementalQueueManager = createQueueManager(
+        async (task: Task) => {
+          const taskNotePath = task.data.notePath as string;
+          return await this.processNote(taskNotePath);
+        },
+        {
+          concurrency: 1, // Process one at a time for incremental updates
+          onTaskComplete: (result: TaskResult) => {
+            if (result.success) {
+              console.log(`Incremental update completed: ${result.taskId}`);
+            } else {
+              console.error(`Incremental update failed: ${result.taskId}`, result.error);
+            }
+          },
+        }
+      );
+      
+      // Start the queue
+      this.incrementalQueueManager.start();
+    }
+    
+    // Create and enqueue task
+    const task = createTask('extract_note', { notePath }, 0);
+    await this.incrementalQueueManager.enqueue(task);
+    
+    console.log(`Note queued for incremental update: ${notePath}`);
+  }
+
+  /**
+   * Get incremental queue status
+   */
+  getIncrementalQueueStatus(): QueueStatus | null {
+    return this.incrementalQueueManager?.getStatus() ?? null;
+  }
+
+  /**
+   * Clear all debounce timers (cleanup)
+   */
+  clearDebounceTimers(): void {
+    for (const timeout of this.debounceMap.values()) {
+      clearTimeout(timeout);
+    }
+    this.debounceMap.clear();
+  }
+
+  /**
+   * Handle corrupted card file
+   * 
+   * Requirement 2.5: Attempt to regenerate from source note and log error
+   * 
+   * @param notePath - Path to the source note
+   * @returns ProcessNoteResult
+   */
+  async handleCorruptedCard(notePath: string): Promise<ProcessNoteResult> {
+    const normalizedPath = normalizePath(notePath);
+    
+    console.log(`Attempting to regenerate corrupted card: ${normalizedPath}`);
+    
+    // Log the corruption error
+    const extractionError: ExtractionError = {
+      path: normalizedPath,
+      error: 'Card file corrupted, attempting regeneration',
+      timestamp: new Date().toISOString(),
+      attempts: 0,
+    };
+    
+    await logExtractionError(this.fileService, this.pluginDataDir, extractionError);
+    
+    // Try to regenerate by processing the note
+    return await this.processNote(normalizedPath);
   }
 }
 

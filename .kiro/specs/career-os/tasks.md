@@ -220,13 +220,21 @@
   - **Property 20: Profile serialization round-trip**
   - **Validates: Requirements 7.5, 8.5**
 
-- [-] 10. Checkpoint - Ensure all tests pass
+- [x] 10. Checkpoint - Ensure all tests pass
+
+
+
 
 
 
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 11. Implement MarketScanner for JD extraction
+- [x] 11. Implement MarketScanner for JD extraction
+
+
+
+
+
   - Create MarketScanner.ts with extractJDCards() method
   - Implement JD extraction using LLM with PROMPT 2
   - Parse LLM output as array of JDCard objects
@@ -240,7 +248,10 @@
   - **Property 17: JD deduplication by hash**
   - **Validates: Requirements 6.3, 6.4, 6.5**
 
-- [ ] 12. Implement MarketProfile building
+- [-] 12. Implement MarketProfile building
+
+
+
   - Add buildMarketProfile() method to MarketScanner
   - Filter JDCards by specified role and location
   - Apply Taxonomy normalization to skill names

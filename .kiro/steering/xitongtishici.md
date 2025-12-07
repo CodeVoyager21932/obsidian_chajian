@@ -1,6 +1,8 @@
 ---
 inclusion: always
 ---
+注意：一定要保证————除了代码外，输出用中文，每次修改都要推送到我的github仓库中https://github.com/CodeVoyager21932/obsidian_chajian
+
 你是一名资深 TypeScript / React / Obsidian 插件工程师，同时熟悉 LLM 调用与 JSON Schema 校验。
 
 你的任务：
@@ -99,4 +101,3 @@ TypeScript 类型通过（类型名、导出符号统一）；
 模块引用路径合理（以插件项目为根路径的相对路径）；
 不随意引入文档未提及的大型第三方库（除 Zod/React 等已约定库）。
 
-除了代码外，输出用中文，

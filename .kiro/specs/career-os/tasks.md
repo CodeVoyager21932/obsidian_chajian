@@ -12,11 +12,25 @@
   - Configure TypeScript build and development environment
   - _Requirements: 1.1, 1.2, 1.4, 5.5_
 
-- [ ]* 1.1 Write property test for schema validation
+- [x] 1.1 Write property test for schema validation
+
+
+
+
+
+
+
+
+
+
   - **Property 14: JSON cleaning and validation**
   - **Validates: Requirements 5.1, 5.2**
 
-- [ ] 2. Implement LLM client and queue infrastructure
+- [x] 2. Implement LLM client and queue infrastructure
+
+
+
+
   - Create llmClient.ts with multi-provider support (OpenAI, Anthropic, Local, Google)
   - Implement JSON cleaner to extract valid JSON from LLM responses
   - Add retry logic with exponential backoff
@@ -35,7 +49,10 @@
   - **Property 12: Pause and resume consistency**
   - **Validates: Requirements 4.4**
 
-- [ ] 3. Implement file service and index store
+- [-] 3. Implement file service and index store
+
+
+
   - Create FileService in fs.ts with atomic write operations (write to temp, then rename)
   - Implement backup creation before file overwrites
   - Build IndexStore in IndexStore.ts for reading/writing cards with schema validation

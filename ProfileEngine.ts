@@ -15,14 +15,15 @@
 
 import { App, TFile, TFolder, normalizePath } from 'obsidian';
 import { z } from 'zod';
-import { NoteCard, CareerOSSettings, IndexOptions, IndexResult, Task, QueueStatus } from './types';
-import { NoteCardSchema, CURRENT_SCHEMA_VERSION } from './schema';
+import { NoteCard, CareerOSSettings, IndexOptions, IndexResult, Task, QueueStatus, SelfProfile, SkillProfile, ProjectSummary, Preferences, TechItem, SkillCategory } from './types';
+import { NoteCardSchema, SelfProfileSchema, CURRENT_SCHEMA_VERSION } from './schema';
 import { LLMClient } from './llmClient';
 import { IndexStore } from './IndexStore';
 import { PromptStore, getNoteCardPrompt } from './PromptStore';
 import { PrivacyGuard } from './PrivacyGuard';
 import { FileService } from './fs';
 import { QueueManager, createQueueManager, createTask, TaskResult } from './queue';
+import { Taxonomy } from './Taxonomy';
 
 // ============================================================================
 // Types
@@ -299,6 +300,113 @@ async function logExtractionError(
 // ProfileEngine Class
 // ============================================================================
 
+// ============================================================================
+// SelfProfile Building Configuration
+// ============================================================================
+
+/**
+ * Configuration for SelfProfile building
+ */
+export interface SelfProfileConfig {
+  topSkillsCount: number;      // Number of top skills for analysis_view (default: 15)
+  recentProjectsCount: number; // Number of recent projects for analysis_view (default: 5)
+}
+
+export const DEFAULT_SELF_PROFILE_CONFIG: SelfProfileConfig = {
+  topSkillsCount: 15,
+  recentProjectsCount: 5,
+};
+
+/**
+ * Skill level to numeric score mapping
+ * Used for calculating weighted skill scores
+ */
+const SKILL_LEVEL_SCORES: Record<string, number> = {
+  '入门': 1,
+  '熟悉': 2,
+  '熟练': 3,
+  '精通': 4,
+};
+
+/**
+ * Note type weights for skill scoring
+ * Project notes have higher weight than course notes
+ */
+const NOTE_TYPE_WEIGHTS: Record<string, number> = {
+  'project': 1.5,
+  'course': 1.0,
+  'reflection': 0.8,
+  'other': 0.5,
+};
+
+/**
+ * Time decay calculation
+ * Property 19: Skill scoring with time decay
+ * 
+ * Uses a stepped decay function:
+ * - Within 6 months: 1.0 (no decay)
+ * - 6-12 months: 0.8
+ * - 12-24 months: 0.6
+ * - 24-36 months: 0.4
+ * - Over 36 months: 0.2
+ */
+export function calculateTimeDecay(lastActiveDate: string): number {
+  const now = new Date();
+  const lastActive = new Date(lastActiveDate);
+  
+  // Handle invalid dates
+  if (isNaN(lastActive.getTime())) {
+    return 0.5; // Default decay for invalid dates
+  }
+  
+  const monthsDiff = (now.getTime() - lastActive.getTime()) / (1000 * 60 * 60 * 24 * 30);
+  
+  if (monthsDiff <= 6) return 1.0;
+  if (monthsDiff <= 12) return 0.8;
+  if (monthsDiff <= 24) return 0.6;
+  if (monthsDiff <= 36) return 0.4;
+  return 0.2;
+}
+
+/**
+ * Parse date from various formats
+ */
+function parseDate(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  
+  // Try ISO format first
+  let date = new Date(dateStr);
+  if (!isNaN(date.getTime())) return date;
+  
+  // Try extracting year-month-day from time span like "2023-01 到 2023-06"
+  const spanMatch = dateStr.match(/(\d{4})-(\d{2})(?:-(\d{2}))?/);
+  if (spanMatch) {
+    const year = parseInt(spanMatch[1]);
+    const month = parseInt(spanMatch[2]) - 1;
+    const day = spanMatch[3] ? parseInt(spanMatch[3]) : 1;
+    return new Date(year, month, day);
+  }
+  
+  return null;
+}
+
+/**
+ * Get the most recent date from a time span string
+ */
+function getMostRecentDate(timeSpan: string): Date | null {
+  if (!timeSpan) return null;
+  
+  // Handle time span format "2023-01 到 2023-06"
+  const spanMatch = timeSpan.match(/(\d{4}-\d{2}(?:-\d{2})?)\s*(?:到|至|-)\s*(\d{4}-\d{2}(?:-\d{2})?)/);
+  if (spanMatch) {
+    // Return the end date
+    return parseDate(spanMatch[2]);
+  }
+  
+  // Single date
+  return parseDate(timeSpan);
+}
+
 export class ProfileEngine {
   private app: App;
   private settings: CareerOSSettings;
@@ -308,6 +416,7 @@ export class ProfileEngine {
   private privacyGuard: PrivacyGuard;
   private fileService: FileService;
   private pluginDataDir: string;
+  private taxonomy: Taxonomy;
   
   constructor(
     app: App,
@@ -326,6 +435,7 @@ export class ProfileEngine {
     this.privacyGuard = privacyGuard;
     this.pluginDataDir = pluginDataDir;
     this.fileService = new FileService(app, pluginDataDir);
+    this.taxonomy = new Taxonomy(settings.taxonomy);
   }
   
   /**
@@ -335,6 +445,385 @@ export class ProfileEngine {
     this.settings = settings;
     this.llmClient.updateSettings(settings);
     this.privacyGuard.updateExclusionRules(settings.exclusionRules);
+    this.taxonomy = new Taxonomy(settings.taxonomy);
+  }
+
+  // ============================================================================
+  // SelfProfile Building
+  // Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
+  // ============================================================================
+
+  /**
+   * Build aggregated self profile from all note cards
+   * 
+   * Requirements:
+   * - 7.1: Aggregate all non-deleted NoteCards and normalize skill names using Taxonomy
+   * - 7.2: Apply weights based on note type, skill level, and time decay
+   * - 7.3: Prioritize reflection-type NoteCards for preferences, rank by frequency
+   * - 7.4: Create detailed view and compressed analysis_view with top N skills and recent M projects
+   * - 7.5: Save as both JSON and Markdown formats
+   * 
+   * Property 18: Skill normalization consistency
+   * Property 19: Skill scoring with time decay
+   * Property 20: Profile serialization round-trip
+   * Property 21: Analysis view compression
+   * 
+   * @param config - Optional configuration for profile building
+   * @returns Built SelfProfile
+   */
+  async buildSelfProfile(config: Partial<SelfProfileConfig> = {}): Promise<SelfProfile> {
+    const finalConfig = { ...DEFAULT_SELF_PROFILE_CONFIG, ...config };
+    
+    // Step 1: Read all non-deleted NoteCards from IndexStore
+    const allCards = await this.indexStore.listNoteCards();
+    const activeCards = allCards.filter(card => !card.deleted);
+    
+    console.log(`Building SelfProfile from ${activeCards.length} active NoteCards`);
+    
+    // Step 2: Aggregate skills with normalization and scoring
+    const skills = this.aggregateSkills(activeCards);
+    
+    // Step 3: Aggregate preferences from reflection-type notes
+    const preferences = this.aggregatePreferences(activeCards);
+    
+    // Step 4: Extract project summaries from project-type notes
+    const projects = this.extractProjectSummaries(activeCards);
+    
+    // Step 5: Generate analysis_view with top N skills and recent M projects
+    const analysisView = this.generateAnalysisView(skills, projects, finalConfig);
+    
+    // Step 6: Build the SelfProfile object
+    const selfProfile: SelfProfile = {
+      schema_version: CURRENT_SCHEMA_VERSION,
+      skills,
+      preferences,
+      projects,
+      analysis_view: analysisView,
+      last_built: new Date().toISOString(),
+    };
+    
+    // Step 7: Save as JSON
+    await this.indexStore.writeSelfProfile(selfProfile);
+    
+    // Step 8: Save as Markdown
+    await this.saveSelfProfileAsMarkdown(selfProfile);
+    
+    console.log(`SelfProfile built successfully: ${skills.length} skills, ${projects.length} projects`);
+    
+    return selfProfile;
+  }
+
+  /**
+   * Aggregate skills from all NoteCards with normalization and scoring
+   * 
+   * Property 18: Skill normalization consistency
+   * Property 19: Skill scoring with time decay
+   * 
+   * @param cards - Array of NoteCards to aggregate
+   * @returns Array of SkillProfile sorted by level (descending)
+   */
+  private aggregateSkills(cards: NoteCard[]): SkillProfile[] {
+    // Map to accumulate skill data: normalized name -> aggregated data
+    const skillMap = new Map<string, {
+      name: string;
+      category?: SkillCategory;
+      totalScore: number;
+      evidenceNotes: Set<string>;
+      lastActive: Date;
+    }>();
+    
+    for (const card of cards) {
+      // Get time decay factor based on card's last_updated
+      const timeDecay = calculateTimeDecay(card.last_updated);
+      
+      // Get note type weight
+      const noteTypeWeight = NOTE_TYPE_WEIGHTS[card.type] || 0.5;
+      
+      for (const tech of card.tech_stack) {
+        // Normalize skill name using Taxonomy (Property 18)
+        const normalizedName = this.taxonomy.normalize(tech.name);
+        
+        // Get skill level score
+        const levelScore = SKILL_LEVEL_SCORES[tech.level] || 1;
+        
+        // Calculate weighted score (Property 19)
+        const weightedScore = levelScore * noteTypeWeight * timeDecay;
+        
+        // Get or create skill entry
+        let skillEntry = skillMap.get(normalizedName);
+        if (!skillEntry) {
+          skillEntry = {
+            name: normalizedName,
+            category: this.taxonomy.getCategory(normalizedName),
+            totalScore: 0,
+            evidenceNotes: new Set(),
+            lastActive: new Date(0),
+          };
+          skillMap.set(normalizedName, skillEntry);
+        }
+        
+        // Accumulate score
+        skillEntry.totalScore += weightedScore;
+        
+        // Add evidence note
+        skillEntry.evidenceNotes.add(card.note_path);
+        
+        // Update last active date
+        const cardDate = parseDate(card.last_updated);
+        if (cardDate && cardDate > skillEntry.lastActive) {
+          skillEntry.lastActive = cardDate;
+        }
+      }
+    }
+    
+    // Convert to SkillProfile array and normalize scores to 0-5 range
+    const skills: SkillProfile[] = [];
+    
+    // Find max score for normalization
+    let maxScore = 0;
+    for (const entry of skillMap.values()) {
+      if (entry.totalScore > maxScore) {
+        maxScore = entry.totalScore;
+      }
+    }
+    
+    // Normalize and create SkillProfile objects
+    for (const entry of skillMap.values()) {
+      // Normalize score to 0-5 range
+      const normalizedLevel = maxScore > 0 
+        ? Math.min(5, (entry.totalScore / maxScore) * 5)
+        : 0;
+      
+      skills.push({
+        name: entry.name,
+        category: entry.category,
+        level: Math.round(normalizedLevel * 100) / 100, // Round to 2 decimal places
+        evidence_notes: Array.from(entry.evidenceNotes),
+        last_active: entry.lastActive.toISOString().split('T')[0],
+      });
+    }
+    
+    // Sort by level (descending)
+    skills.sort((a, b) => b.level - a.level);
+    
+    return skills;
+  }
+
+  /**
+   * Aggregate preferences from NoteCards
+   * 
+   * Requirement 7.3: Prioritize reflection-type NoteCards and rank by frequency
+   * 
+   * @param cards - Array of NoteCards to aggregate
+   * @returns Aggregated Preferences
+   */
+  private aggregatePreferences(cards: NoteCard[]): Preferences {
+    // Count frequency of each preference item
+    const likesCount = new Map<string, number>();
+    const dislikesCount = new Map<string, number>();
+    const traitsCount = new Map<string, number>();
+    
+    // Process cards, giving higher weight to reflection-type notes
+    for (const card of cards) {
+      const weight = card.type === 'reflection' ? 2 : 1;
+      
+      for (const like of card.preferences.likes) {
+        const normalized = like.trim();
+        if (normalized) {
+          likesCount.set(normalized, (likesCount.get(normalized) || 0) + weight);
+        }
+      }
+      
+      for (const dislike of card.preferences.dislikes) {
+        const normalized = dislike.trim();
+        if (normalized) {
+          dislikesCount.set(normalized, (dislikesCount.get(normalized) || 0) + weight);
+        }
+      }
+      
+      for (const trait of card.preferences.traits) {
+        const normalized = trait.trim();
+        if (normalized) {
+          traitsCount.set(normalized, (traitsCount.get(normalized) || 0) + weight);
+        }
+      }
+    }
+    
+    // Sort by frequency and extract items
+    const sortByFrequency = (map: Map<string, number>): string[] => {
+      return Array.from(map.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([item]) => item);
+    };
+    
+    return {
+      likes: sortByFrequency(likesCount),
+      dislikes: sortByFrequency(dislikesCount),
+      traits: sortByFrequency(traitsCount),
+    };
+  }
+
+  /**
+   * Extract project summaries from project-type NoteCards
+   * 
+   * @param cards - Array of NoteCards to process
+   * @returns Array of ProjectSummary sorted by date (most recent first)
+   */
+  private extractProjectSummaries(cards: NoteCard[]): ProjectSummary[] {
+    const projects: ProjectSummary[] = [];
+    
+    for (const card of cards) {
+      if (card.type === 'project') {
+        projects.push({
+          note_path: card.note_path,
+          summary: card.summary,
+          tech_stack: card.tech_stack,
+          time_span: card.time_span,
+        });
+      }
+    }
+    
+    // Sort by time_span (most recent first)
+    projects.sort((a, b) => {
+      const dateA = getMostRecentDate(a.time_span);
+      const dateB = getMostRecentDate(b.time_span);
+      
+      if (!dateA && !dateB) return 0;
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      
+      return dateB.getTime() - dateA.getTime();
+    });
+    
+    return projects;
+  }
+
+  /**
+   * Generate analysis_view with top N skills and recent M projects
+   * 
+   * Property 21: Analysis view compression
+   * 
+   * @param skills - All aggregated skills
+   * @param projects - All project summaries
+   * @param config - Configuration with topSkillsCount and recentProjectsCount
+   * @returns Compressed analysis view
+   */
+  private generateAnalysisView(
+    skills: SkillProfile[],
+    projects: ProjectSummary[],
+    config: SelfProfileConfig
+  ): { top_skills: SkillProfile[]; recent_projects: ProjectSummary[] } {
+    return {
+      top_skills: skills.slice(0, config.topSkillsCount),
+      recent_projects: projects.slice(0, config.recentProjectsCount),
+    };
+  }
+
+  /**
+   * Save SelfProfile as Markdown format
+   * 
+   * Requirement 7.5: Save as both JSON and Markdown formats
+   * 
+   * @param profile - SelfProfile to save
+   */
+  private async saveSelfProfileAsMarkdown(profile: SelfProfile): Promise<void> {
+    const timestamp = new Date().toISOString().split('T')[0];
+    const mdPath = `${this.settings.mappingDirectory}/self_profile_${timestamp}.md`;
+    
+    // Build Markdown content
+    let content = `---
+schema_version: ${profile.schema_version}
+last_built: ${profile.last_built}
+total_skills: ${profile.skills.length}
+total_projects: ${profile.projects.length}
+---
+
+# Self Profile
+
+Generated: ${profile.last_built}
+
+## Skills Overview
+
+| Skill | Level | Category | Evidence Count |
+|-------|-------|----------|----------------|
+`;
+    
+    // Add top skills to table
+    for (const skill of profile.skills.slice(0, 20)) {
+      const levelBar = '█'.repeat(Math.round(skill.level)) + '░'.repeat(5 - Math.round(skill.level));
+      content += `| ${skill.name} | ${levelBar} ${skill.level.toFixed(1)} | ${skill.category || '-'} | ${skill.evidence_notes.length} |\n`;
+    }
+    
+    if (profile.skills.length > 20) {
+      content += `\n*... and ${profile.skills.length - 20} more skills*\n`;
+    }
+    
+    // Add preferences section
+    content += `
+## Preferences
+
+### Likes
+${profile.preferences.likes.length > 0 ? profile.preferences.likes.map(l => `- ${l}`).join('\n') : '*No preferences recorded*'}
+
+### Dislikes
+${profile.preferences.dislikes.length > 0 ? profile.preferences.dislikes.map(d => `- ${d}`).join('\n') : '*No dislikes recorded*'}
+
+### Traits
+${profile.preferences.traits.length > 0 ? profile.preferences.traits.map(t => `- ${t}`).join('\n') : '*No traits recorded*'}
+
+## Recent Projects
+
+`;
+    
+    // Add project summaries
+    for (const project of profile.projects.slice(0, 10)) {
+      const techList = project.tech_stack.map(t => t.name).join(', ');
+      content += `### ${project.note_path.split('/').pop()?.replace('.md', '') || 'Project'}
+
+- **Time**: ${project.time_span || 'Unknown'}
+- **Tech Stack**: ${techList || 'None'}
+- **Summary**: ${project.summary}
+
+`;
+    }
+    
+    if (profile.projects.length > 10) {
+      content += `*... and ${profile.projects.length - 10} more projects*\n`;
+    }
+    
+    // Add analysis view section
+    if (profile.analysis_view) {
+      content += `
+## Analysis View (Compressed)
+
+### Top ${profile.analysis_view.top_skills.length} Skills
+
+`;
+      for (let i = 0; i < profile.analysis_view.top_skills.length; i++) {
+        const skill = profile.analysis_view.top_skills[i];
+        content += `${i + 1}. **${skill.name}** (Level: ${skill.level.toFixed(1)})\n`;
+      }
+      
+      content += `
+### Recent ${profile.analysis_view.recent_projects.length} Projects
+
+`;
+      for (const project of profile.analysis_view.recent_projects) {
+        content += `- **${project.note_path.split('/').pop()?.replace('.md', '')}**: ${project.summary.substring(0, 100)}${project.summary.length > 100 ? '...' : ''}\n`;
+      }
+    }
+    
+    // Write Markdown file
+    await this.fileService.write(mdPath, content);
+    
+    console.log(`SelfProfile Markdown saved to: ${mdPath}`);
+  }
+
+  /**
+   * Get the current Taxonomy instance
+   */
+  getTaxonomy(): Taxonomy {
+    return this.taxonomy;
   }
   
   /**

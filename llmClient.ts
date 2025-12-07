@@ -418,11 +418,19 @@ export class LLMClient {
       // For local providers, try a simple request
       if (config.provider === 'local') {
         const url = config.baseUrl || 'http://localhost:11434';
-        const response = await fetch(`${url}/api/tags`, {
-          method: 'GET',
-          signal: AbortSignal.timeout(5000),
-        });
-        return response.ok;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        try {
+          const response = await fetch(`${url}/api/tags`, {
+            method: 'GET',
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          return response.ok;
+        } catch {
+          clearTimeout(timeoutId);
+          return false;
+        }
       }
       
       // For cloud providers, just check if API key is configured

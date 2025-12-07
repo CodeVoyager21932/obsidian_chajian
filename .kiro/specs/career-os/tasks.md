@@ -173,6 +173,8 @@
 
 
 
+
+
   - Add file event listeners (onNoteSaved, onNoteRenamed, onNoteDeleted)
   - Implement hash comparison to detect content changes
   - Add notes to queue when hash differs
@@ -181,7 +183,8 @@
   - Add debouncing to prevent rapid re-indexing
   - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-- [ ]* 8.1 Write property test for incremental updates
+- [ ] 8.1 Write property test for incremental updates
+
   - **Property 5: Incremental update correctness**
   - **Validates: Requirements 2.1, 2.2**
 
@@ -189,7 +192,12 @@
   - **Property 6: File operation state consistency**
   - **Validates: Requirements 2.3, 2.4**
 
-- [ ] 9. Implement SelfProfile building
+- [x] 9. Implement SelfProfile building
+
+
+
+
+
   - Add buildSelfProfile() method to ProfileEngine
   - Read all non-deleted NoteCards from IndexStore
   - Apply Taxonomy normalization to skill names
@@ -212,7 +220,10 @@
   - **Property 20: Profile serialization round-trip**
   - **Validates: Requirements 7.5, 8.5**
 
-- [ ] 10. Checkpoint - Ensure all tests pass
+- [-] 10. Checkpoint - Ensure all tests pass
+
+
+
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 11. Implement MarketScanner for JD extraction

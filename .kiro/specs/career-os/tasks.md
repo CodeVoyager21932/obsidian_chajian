@@ -248,7 +248,9 @@
   - **Property 17: JD deduplication by hash**
   - **Validates: Requirements 6.3, 6.4, 6.5**
 
-- [-] 12. Implement MarketProfile building
+- [x] 12. Implement MarketProfile building
+
+
 
 
 
@@ -261,7 +263,12 @@
   - Save MarketProfile as both JSON and Markdown
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5_
 
-- [ ] 13. Implement StrategyCore for gap analysis
+- [x] 13. Implement StrategyCore for gap analysis
+
+
+
+
+
   - Create StrategyCore.ts with analyzeGap() method
   - Load compressed SelfProfile analysis_view and target MarketProfile
   - Construct prompt with top N skills, recent M projects, and market demands
@@ -270,7 +277,10 @@
   - Save gap analysis report to mapping directory with frontmatter metadata
   - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
-- [ ] 14. Implement action plan generation
+- [-] 14. Implement action plan generation
+
+
+
   - Add generatePlan() method to StrategyCore
   - Prompt user for target role, location, period, and weekly hours
   - Send compressed profiles and constraints to LLM

@@ -558,28 +558,263 @@ schema_version: ${CURRENT_SCHEMA_VERSION}
   }
 
   // ============================================================================
-  // Action Plan Generation (Placeholder for Task 14)
+  // Action Plan Generation
+  // Requirements: 10.1, 10.2, 10.3, 10.4
   // ============================================================================
 
   /**
    * Generate action plan based on gap analysis
    * 
-   * Note: This is a placeholder for Task 14. Full implementation will be done
-   * when that task is executed.
+   * Requirements:
+   * - 10.1: Prompt for target role, location, time period, and weekly available hours
+   * - 10.2: Send compressed SelfProfile, MarketProfile, and user constraints to LLM
+   * - 10.3: Receive Markdown document with phased goals and weekly task checklists
+   * - 10.4: Save plan with metadata in frontmatter
    * 
-   * @param gapAnalysis - Gap analysis result
+   * @param constraints - User constraints for plan generation (role, location, period, hours)
+   * @returns Plan generation result with path to saved plan
+   */
+  async generatePlan(
+    constraints: PlanConstraints
+  ): Promise<GeneratePlanResult> {
+    try {
+      // Validate constraints (Requirement 10.1)
+      if (!constraints.targetRole || constraints.targetRole.trim() === '') {
+        return {
+          success: false,
+          error: '目标岗位不能为空',
+        };
+      }
+      if (!constraints.location || constraints.location.trim() === '') {
+        return {
+          success: false,
+          error: '目标地点不能为空',
+        };
+      }
+      if (constraints.periodMonths <= 0) {
+        return {
+          success: false,
+          error: '计划周期必须大于 0',
+        };
+      }
+      if (constraints.weeklyHours <= 0) {
+        return {
+          success: false,
+          error: '每周可用时间必须大于 0',
+        };
+      }
+
+      // Load SelfProfile
+      const selfProfile = await this.indexStore.readSelfProfile();
+      if (!selfProfile) {
+        return {
+          success: false,
+          error: '未找到自我画像，请先构建 SelfProfile',
+        };
+      }
+
+      // Load MarketProfile
+      const marketProfile = await this.indexStore.readMarketProfile(
+        constraints.targetRole,
+        constraints.location
+      );
+      if (!marketProfile) {
+        return {
+          success: false,
+          error: `未找到目标市场画像 (${constraints.targetRole} - ${constraints.location})，请先构建 MarketProfile`,
+        };
+      }
+
+      // Requirement 10.2: Prepare compressed profiles for LLM
+      const analysisView = selfProfile.analysis_view;
+      if (!analysisView) {
+        return {
+          success: false,
+          error: 'SelfProfile 缺少 analysis_view，请重新构建',
+        };
+      }
+
+      // Compress SelfProfile for token efficiency
+      const compressedSelfProfile = JSON.stringify({
+        top_skills: analysisView.top_skills.map(s => ({
+          name: s.name,
+          level: s.level,
+          category: s.category,
+        })),
+        recent_projects: analysisView.recent_projects.map(p => ({
+          summary: p.summary,
+          tech_stack: p.tech_stack.map(t => t.name),
+          time_span: p.time_span,
+        })),
+        preferences: {
+          likes: selfProfile.preferences.likes.slice(0, 5),
+          dislikes: selfProfile.preferences.dislikes.slice(0, 3),
+        },
+      }, null, 2);
+
+      // Compress MarketProfile for token efficiency
+      const compressedMarketProfile = JSON.stringify({
+        role: marketProfile.role,
+        location: marketProfile.location,
+        top_skills_demand: marketProfile.skills_demand.slice(0, 15).map(s => ({
+          name: s.name,
+          frequency: s.frequency,
+        })),
+        experience_distribution: marketProfile.experience_distribution,
+        soft_requirements: marketProfile.soft_requirements.slice(0, 5),
+      }, null, 2);
+
+      // Build prompt for LLM
+      const prompt = await getPlanPrompt(
+        this.promptStore,
+        compressedSelfProfile,
+        compressedMarketProfile,
+        constraints.targetRole,
+        constraints.location,
+        constraints.periodMonths,
+        constraints.weeklyHours
+      );
+
+      // Requirement 10.3: Call LLM (analyze role) to generate plan
+      console.log('Calling LLM for action plan generation...');
+      const llmResponse = await this.llmClient.call('analyze', prompt);
+
+      // Requirement 10.4: Save plan with frontmatter metadata
+      const timestamp = new Date().toISOString();
+      const dateStr = timestamp.split('T')[0];
+      const sanitizedRole = constraints.targetRole.replace(/\s+/g, '_');
+      const sanitizedLocation = constraints.location.replace(/\s+/g, '_');
+      const planFilename = `action_plan_${sanitizedRole}_${sanitizedLocation}_${dateStr}.md`;
+      const planPath = `${this.settings.mappingDirectory}/${planFilename}`;
+
+      // Build plan with frontmatter
+      const planContent = this.buildActionPlanDocument(
+        llmResponse,
+        constraints,
+        selfProfile,
+        marketProfile,
+        timestamp
+      );
+
+      // Save plan
+      await this.saveReport(planPath, planContent);
+
+      console.log(`Action plan generated and saved to: ${planPath}`);
+
+      return {
+        success: true,
+        planPath,
+      };
+    } catch (error) {
+      console.error('Action plan generation failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Build action plan document with frontmatter metadata
+   * 
+   * Requirement 10.4: Include metadata in frontmatter such as role, period, 
+   * weekly hours, and generation timestamp
+   */
+  private buildActionPlanDocument(
+    llmResponse: string,
+    constraints: PlanConstraints,
+    selfProfile: SelfProfile,
+    marketProfile: MarketProfile,
+    timestamp: string
+  ): string {
+    const dateStr = timestamp.split('T')[0];
+    const sanitizedRole = marketProfile.role.toLowerCase().replace(/\s+/g, '_');
+    const sanitizedLocation = marketProfile.location.toLowerCase().replace(/\s+/g, '_');
+
+    // Build frontmatter with all required metadata
+    const frontmatter = `---
+type: action_plan
+role: "${constraints.targetRole}"
+location: "${constraints.location}"
+period: "${constraints.periodMonths} 个月"
+weekly_hours: ${constraints.weeklyHours}
+generated_at: "${timestamp}"
+source_self_profile: "self_profile_${dateStr}.json"
+source_market_profile: "market_${sanitizedRole}_${sanitizedLocation}_${dateStr}.json"
+schema_version: ${CURRENT_SCHEMA_VERSION}
+---
+
+`;
+
+    // Build header section
+    const header = `# 行动计划
+
+## 计划概览
+- **目标岗位**: ${constraints.targetRole}
+- **目标地点**: ${constraints.location}
+- **计划周期**: ${constraints.periodMonths} 个月
+- **每周可用时间**: ${constraints.weeklyHours} 小时
+- **生成时间**: ${timestamp}
+
+---
+
+`;
+
+    // Combine frontmatter, header, and LLM response
+    return frontmatter + header + llmResponse;
+  }
+
+  /**
+   * Generate action plan with gap analysis context
+   * 
+   * This is a convenience method that first performs gap analysis,
+   * then generates the action plan based on the results.
+   * 
    * @param constraints - User constraints for plan generation
    * @returns Plan generation result
    */
-  async generatePlan(
-    gapAnalysis: GapAnalysis,
+  async generatePlanWithGapAnalysis(
     constraints: PlanConstraints
   ): Promise<GeneratePlanResult> {
-    // Placeholder - will be implemented in Task 14
-    return {
-      success: false,
-      error: 'Action plan generation not yet implemented. See Task 14.',
-    };
+    try {
+      // Load profiles
+      const selfProfile = await this.indexStore.readSelfProfile();
+      if (!selfProfile) {
+        return {
+          success: false,
+          error: '未找到自我画像，请先构建 SelfProfile',
+        };
+      }
+
+      const marketProfile = await this.indexStore.readMarketProfile(
+        constraints.targetRole,
+        constraints.location
+      );
+      if (!marketProfile) {
+        return {
+          success: false,
+          error: `未找到目标市场画像 (${constraints.targetRole} - ${constraints.location})，请先构建 MarketProfile`,
+        };
+      }
+
+      // First, perform gap analysis
+      const gapResult = await this.analyzeGap(selfProfile, marketProfile);
+      if (!gapResult.success || !gapResult.gapAnalysis) {
+        return {
+          success: false,
+          error: `差距分析失败: ${gapResult.error}`,
+        };
+      }
+
+      // Then generate the action plan
+      return await this.generatePlan(constraints);
+    } catch (error) {
+      console.error('Plan generation with gap analysis failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 }
 

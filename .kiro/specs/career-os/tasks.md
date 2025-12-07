@@ -108,6 +108,7 @@
 
 
 
+
   - Create prompts/ directory
   - Write noteCardPrompt.txt for NoteCard extraction (PROMPT 1)
   - Write jdCardPrompt.txt for JDCard extraction (PROMPT 2)
@@ -115,7 +116,12 @@
   - Implement PromptStore utility to load and interpolate prompts
   - _Requirements: 1.1, 6.1, 9.3, 10.3_
 
-- [ ] 6. Implement ProfileEngine core extraction
+- [x] 6. Implement ProfileEngine core extraction
+
+
+
+
+
   - Create ProfileEngine.ts with processNote() method
   - Implement NoteCard extraction using LLM with PROMPT 1
   - Add content hash calculation for change detection
@@ -144,7 +150,10 @@
   - **Property 15: Schema validation retry**
   - **Validates: Requirements 5.3, 5.4**
 
-- [ ] 7. Implement cold start indexing
+- [-] 7. Implement cold start indexing
+
+
+
   - Add coldStartIndex() method to ProfileEngine
   - Implement directory scanning to find all markdown files
   - Build task queue for unindexed notes (check hash against existing cards)

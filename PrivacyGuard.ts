@@ -147,3 +147,11 @@ export class PrivacyGuard {
     return [...this.piiPatterns];
   }
 }
+
+
+/**
+ * Factory function to create a PrivacyGuard instance
+ */
+export function createPrivacyGuard(exclusionRules: ExclusionRules): PrivacyGuard {
+  return new PrivacyGuard(exclusionRules);
+}

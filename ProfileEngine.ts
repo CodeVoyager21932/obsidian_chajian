@@ -7,19 +7,21 @@
  * - Time parsing from content, filename, and file metadata
  * - Schema validation with retry logic
  * - Error handling and logging
+ * - Cold start indexing with concurrent processing
  * 
- * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 5.2, 5.3, 5.4
+ * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 4.1, 4.2, 4.3, 5.2, 5.3, 5.4, 15.1, 15.2, 15.3
  */
 
-import { App, TFile, normalizePath } from 'obsidian';
+import { App, TFile, TFolder, normalizePath } from 'obsidian';
 import { z } from 'zod';
-import { NoteCard, CareerOSSettings, NoteType } from './types';
+import { NoteCard, CareerOSSettings, NoteType, IndexOptions, IndexResult, Task, QueueStatus } from './types';
 import { NoteCardSchema, CURRENT_SCHEMA_VERSION } from './schema';
 import { LLMClient, LLMError } from './llmClient';
 import { IndexStore } from './IndexStore';
 import { PromptStore, getNoteCardPrompt } from './PromptStore';
 import { PrivacyGuard } from './PrivacyGuard';
 import { FileService } from './fs';
+import { QueueManager, createQueueManager, createTask, TaskResult } from './queue';
 
 // ============================================================================
 // Types
@@ -38,6 +40,34 @@ export interface ExtractionError {
   error: string;
   timestamp: string;
   attempts: number;
+}
+
+/**
+ * Progress callback for cold start indexing
+ */
+export type IndexProgressCallback = (status: QueueStatus) => void;
+
+/**
+ * Dry-run result for a single note
+ */
+export interface DryRunNoteResult {
+  path: string;
+  success: boolean;
+  noteCard?: NoteCard;
+  error?: string;
+  skipped?: boolean;
+  skipReason?: string;
+}
+
+/**
+ * Dry-run summary result
+ */
+export interface DryRunResult {
+  totalNotes: number;
+  processedNotes: number;
+  skippedNotes: number;
+  failedNotes: number;
+  results: DryRunNoteResult[];
 }
 
 // Schema for LLM extraction output (without hash and detected_date which we set)
@@ -512,6 +542,504 @@ export class ProfileEngine {
       confirmedCards: cards.filter(c => c.status === 'confirmed' && !c.deleted).length,
       deletedCards: cards.filter(c => c.deleted).length,
     };
+  }
+
+  // ============================================================================
+  // Cold Start Indexing
+  // Requirements: 4.1, 4.2, 4.3, 15.1, 15.2, 15.3
+  // ============================================================================
+
+  /**
+   * Scan directories to find all markdown files
+   * 
+   * @param directories - Array of directory paths to scan (empty = scan entire vault)
+   * @returns Array of markdown file paths
+   */
+  async scanDirectories(directories: string[]): Promise<string[]> {
+    const markdownFiles: string[] = [];
+    
+    // If no directories specified, scan entire vault
+    if (directories.length === 0) {
+      const allFiles = this.app.vault.getMarkdownFiles();
+      for (const file of allFiles) {
+        markdownFiles.push(file.path);
+      }
+    } else {
+      // Scan specified directories
+      for (const dirPath of directories) {
+        const normalizedDir = normalizePath(dirPath);
+        const folder = this.app.vault.getAbstractFileByPath(normalizedDir);
+        
+        if (folder && folder instanceof TFolder) {
+          this.collectMarkdownFiles(folder, markdownFiles);
+        }
+      }
+    }
+    
+    return markdownFiles;
+  }
+
+  /**
+   * Recursively collect markdown files from a folder
+   */
+  private collectMarkdownFiles(folder: TFolder, files: string[]): void {
+    for (const child of folder.children) {
+      if (child instanceof TFile && child.extension === 'md') {
+        files.push(child.path);
+      } else if (child instanceof TFolder) {
+        this.collectMarkdownFiles(child, files);
+      }
+    }
+  }
+
+  /**
+   * Filter notes that need indexing (unindexed or hash changed)
+   * 
+   * @param notePaths - Array of note paths to check
+   * @returns Array of note paths that need indexing
+   */
+  async filterUnindexedNotes(notePaths: string[]): Promise<string[]> {
+    const unindexedNotes: string[] = [];
+    
+    for (const notePath of notePaths) {
+      const normalizedPath = normalizePath(notePath);
+      
+      // Get the file
+      const file = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (!file || !(file instanceof TFile)) {
+        continue;
+      }
+      
+      // Read content and calculate hash
+      const content = await this.app.vault.read(file);
+      
+      // Extract tags for exclusion check
+      const tags = this.extractTags(content);
+      
+      // Check exclusion rules (Property 9)
+      if (this.privacyGuard.shouldExclude(normalizedPath, tags)) {
+        continue;
+      }
+      
+      const currentHash = calculateContentHash(content);
+      
+      // Get existing card
+      const existingCard = await this.indexStore.readNoteCard(normalizedPath);
+      
+      // If no existing card or hash differs, needs indexing
+      if (!existingCard || existingCard.hash !== currentHash) {
+        unindexedNotes.push(normalizedPath);
+      }
+    }
+    
+    return unindexedNotes;
+  }
+
+  /**
+   * Cold start indexing - scan directories and build task queue for all unindexed notes
+   * 
+   * Requirements:
+   * - 4.1: Scan selected directories and build task queue
+   * - 4.2: Limit concurrent requests (via QueueManager)
+   * - 4.3: Display progress indicator (via callback)
+   * - 15.1: Dry-run mode processes only first N notes
+   * - 15.2: Dry-run displays results without writing files
+   * - 15.3: Dry-run does not write card files
+   * 
+   * @param directories - Array of directory paths to scan (empty = scan entire vault)
+   * @param options - Index options (dryRun, maxNotes, concurrency)
+   * @param onProgress - Progress callback for UI updates
+   * @returns IndexResult with statistics
+   */
+  async coldStartIndex(
+    directories: string[],
+    options: IndexOptions = {},
+    onProgress?: IndexProgressCallback
+  ): Promise<IndexResult> {
+    const {
+      dryRun = this.settings.dryRunEnabled,
+      maxNotes = dryRun ? this.settings.dryRunMaxNotes : undefined,
+      concurrency = this.settings.concurrency,
+    } = options;
+
+    // Step 1: Scan directories to find all markdown files
+    const allNotes = await this.scanDirectories(directories);
+    
+    // Step 2: Filter to only unindexed notes (check hash against existing cards)
+    let notesToProcess = await this.filterUnindexedNotes(allNotes);
+    
+    // Step 3: Apply maxNotes limit for dry-run mode
+    if (maxNotes !== undefined && maxNotes > 0) {
+      notesToProcess = notesToProcess.slice(0, maxNotes);
+    }
+    
+    // Initialize result tracking
+    const result: IndexResult = {
+      totalNotes: notesToProcess.length,
+      processedNotes: 0,
+      failedNotes: 0,
+      errors: [],
+    };
+    
+    // If no notes to process, return early
+    if (notesToProcess.length === 0) {
+      return result;
+    }
+    
+    // For dry-run mode, process without writing files
+    if (dryRun) {
+      return await this.dryRunIndex(notesToProcess, onProgress);
+    }
+    
+    // Step 4: Create task queue with QueueManager
+    this.currentQueueManager = createQueueManager(
+      async (task: Task) => {
+        const notePath = task.data.notePath as string;
+        return await this.processNote(notePath);
+      },
+      {
+        concurrency,
+        onProgress: (status) => {
+          if (onProgress) {
+            onProgress(status);
+          }
+        },
+        onTaskComplete: (taskResult: TaskResult) => {
+          if (taskResult.success) {
+            const processResult = taskResult.result as ProcessNoteResult;
+            if (processResult.success && !processResult.skipped) {
+              result.processedNotes++;
+            } else if (!processResult.success) {
+              result.failedNotes++;
+              result.errors.push({
+                path: taskResult.taskId,
+                error: processResult.error || 'Unknown error',
+              });
+            }
+          } else {
+            result.failedNotes++;
+            result.errors.push({
+              path: taskResult.taskId,
+              error: taskResult.error?.message || 'Unknown error',
+            });
+          }
+        },
+      }
+    );
+    
+    // Step 5: Enqueue all notes as tasks
+    for (const notePath of notesToProcess) {
+      const task = createTask('extract_note', { notePath });
+      await this.currentQueueManager.enqueue(task);
+    }
+    
+    // Step 6: Start processing
+    this.currentQueueManager.start();
+    
+    // Step 7: Wait for completion
+    await this.currentQueueManager.waitForCompletion();
+    
+    // Clear queue manager reference
+    this.currentQueueManager = undefined;
+    
+    return result;
+  }
+
+  /**
+   * Dry-run indexing - process notes without writing files
+   * 
+   * Property 24: Dry-run isolation
+   * - Process specified number of notes
+   * - Display results
+   * - Do NOT write any card files to disk
+   * 
+   * @param notePaths - Array of note paths to process
+   * @param onProgress - Progress callback
+   * @returns IndexResult with dry-run results
+   */
+  private async dryRunIndex(
+    notePaths: string[],
+    onProgress?: IndexProgressCallback
+  ): Promise<IndexResult> {
+    const result: IndexResult = {
+      totalNotes: notePaths.length,
+      processedNotes: 0,
+      failedNotes: 0,
+      errors: [],
+    };
+    
+    const dryRunResults: DryRunNoteResult[] = [];
+    
+    // Process notes sequentially in dry-run mode for clearer output
+    for (let i = 0; i < notePaths.length; i++) {
+      const notePath = notePaths[i];
+      
+      // Update progress
+      if (onProgress) {
+        onProgress({
+          total: notePaths.length,
+          completed: i,
+          failed: result.failedNotes,
+          pending: notePaths.length - i,
+          isRunning: true,
+        });
+      }
+      
+      try {
+        // Process note but don't write to disk
+        const processResult = await this.processNoteDryRun(notePath);
+        
+        dryRunResults.push({
+          path: notePath,
+          success: processResult.success,
+          noteCard: processResult.noteCard,
+          error: processResult.error,
+          skipped: processResult.skipped,
+          skipReason: processResult.skipReason,
+        });
+        
+        if (processResult.success && !processResult.skipped) {
+          result.processedNotes++;
+        } else if (!processResult.success) {
+          result.failedNotes++;
+          result.errors.push({
+            path: notePath,
+            error: processResult.error || 'Unknown error',
+          });
+        }
+      } catch (error) {
+        result.failedNotes++;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        result.errors.push({
+          path: notePath,
+          error: errorMessage,
+        });
+        
+        dryRunResults.push({
+          path: notePath,
+          success: false,
+          error: errorMessage,
+        });
+      }
+    }
+    
+    // Final progress update
+    if (onProgress) {
+      onProgress({
+        total: notePaths.length,
+        completed: result.processedNotes + result.failedNotes,
+        failed: result.failedNotes,
+        pending: 0,
+        isRunning: false,
+      });
+    }
+    
+    // Log dry-run results to console for developer review (Requirement 15.2)
+    console.log('=== CareerOS Dry-Run Results ===');
+    console.log(`Total notes: ${result.totalNotes}`);
+    console.log(`Processed: ${result.processedNotes}`);
+    console.log(`Failed: ${result.failedNotes}`);
+    console.log('');
+    
+    for (const dryResult of dryRunResults) {
+      if (dryResult.success && dryResult.noteCard) {
+        console.log(`✓ ${dryResult.path}`);
+        console.log(`  Type: ${dryResult.noteCard.type}`);
+        console.log(`  Summary: ${dryResult.noteCard.summary.substring(0, 100)}...`);
+        console.log(`  Skills: ${dryResult.noteCard.tech_stack.map(t => t.name).join(', ')}`);
+      } else if (dryResult.skipped) {
+        console.log(`⊘ ${dryResult.path} (skipped: ${dryResult.skipReason})`);
+      } else {
+        console.log(`✗ ${dryResult.path}`);
+        console.log(`  Error: ${dryResult.error}`);
+      }
+      console.log('');
+    }
+    
+    console.log('=== End Dry-Run Results ===');
+    
+    return result;
+  }
+
+  /**
+   * Process a note in dry-run mode (no file writes)
+   * 
+   * Similar to processNote() but does NOT write to IndexStore
+   */
+  private async processNoteDryRun(notePath: string): Promise<ProcessNoteResult> {
+    const normalizedPath = normalizePath(notePath);
+    
+    try {
+      // Get the file
+      const file = this.app.vault.getAbstractFileByPath(normalizedPath);
+      if (!file || !(file instanceof TFile)) {
+        return {
+          success: false,
+          error: `File not found: ${notePath}`,
+        };
+      }
+      
+      // Read note content
+      const content = await this.app.vault.read(file);
+      
+      // Extract tags from frontmatter or content
+      const tags = this.extractTags(content);
+      
+      // Check exclusion rules (Property 9)
+      if (this.privacyGuard.shouldExclude(normalizedPath, tags)) {
+        return {
+          success: true,
+          skipped: true,
+          skipReason: 'Note excluded by privacy rules',
+        };
+      }
+      
+      // Calculate content hash (Property 3)
+      const contentHash = calculateContentHash(content);
+      
+      // Check if we already have a card with the same hash
+      const existingCard = await this.indexStore.readNoteCard(normalizedPath);
+      if (existingCard && existingCard.hash === contentHash) {
+        return {
+          success: true,
+          skipped: true,
+          skipReason: 'Content unchanged (hash match)',
+          noteCard: existingCard,
+        };
+      }
+      
+      // Get LLM provider for extract role
+      const llmConfig = this.settings.llmConfigs.extract;
+      
+      // Apply PII filtering for external LLMs (Property 8)
+      const filteredContent = this.privacyGuard.filterPII(content, llmConfig.provider);
+      
+      // Get current date for detected_date
+      const currentDate = new Date().toISOString();
+      
+      // Build prompt
+      const prompt = await getNoteCardPrompt(
+        this.promptStore,
+        normalizedPath,
+        filteredContent,
+        contentHash,
+        currentDate
+      );
+      
+      // Call LLM with retry logic (Property 15)
+      let noteCard: NoteCard;
+      let attempts = 0;
+      const maxRetries = this.settings.maxRetries;
+      
+      while (attempts <= maxRetries) {
+        attempts++;
+        
+        try {
+          // Call LLM expecting JSON output
+          const llmOutput = await this.llmClient.callJSON(
+            'extract',
+            prompt,
+            LLMNoteCardOutputSchema,
+            { maxRetries: 0 } // We handle retries ourselves
+          );
+          
+          // Ensure required fields are set correctly
+          noteCard = {
+            ...llmOutput,
+            schema_version: CURRENT_SCHEMA_VERSION,
+            note_path: normalizedPath,
+            hash: contentHash,
+            detected_date: currentDate,
+            // Infer last_updated if LLM didn't provide a good value
+            last_updated: llmOutput.last_updated || inferLastUpdated(content, file.name, file),
+          };
+          
+          // Validate final NoteCard against schema
+          NoteCardSchema.parse(noteCard);
+          
+          // DRY-RUN: Do NOT write to IndexStore (Property 24)
+          // Just return the result for display
+          
+          return {
+            success: true,
+            noteCard,
+          };
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          
+          // Check if we should retry
+          if (attempts <= maxRetries) {
+            console.log(`[Dry-Run] NoteCard extraction failed (attempt ${attempts}/${maxRetries + 1}): ${errorMessage}`);
+            continue;
+          }
+          
+          // Max retries exhausted
+          return {
+            success: false,
+            error: `Extraction failed after ${attempts} attempts: ${errorMessage}`,
+          };
+        }
+      }
+      
+      // Should not reach here
+      return {
+        success: false,
+        error: 'Unexpected error in extraction loop',
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   * Get the current queue manager for external control (pause/resume/cancel)
+   * This is set during coldStartIndex execution
+   */
+  private currentQueueManager?: QueueManager;
+
+  /**
+   * Pause the current indexing operation
+   */
+  pauseIndexing(): void {
+    if (this.currentQueueManager) {
+      this.currentQueueManager.pause();
+    }
+  }
+
+  /**
+   * Resume the current indexing operation
+   */
+  resumeIndexing(): void {
+    if (this.currentQueueManager) {
+      this.currentQueueManager.resume();
+    }
+  }
+
+  /**
+   * Cancel the current indexing operation
+   */
+  cancelIndexing(): void {
+    if (this.currentQueueManager) {
+      this.currentQueueManager.cancel();
+    }
+  }
+
+  /**
+   * Check if indexing is currently running
+   */
+  isIndexingRunning(): boolean {
+    return this.currentQueueManager?.isRunning() ?? false;
+  }
+
+  /**
+   * Check if indexing is currently paused
+   */
+  isIndexingPaused(): boolean {
+    return this.currentQueueManager?.isPaused() ?? false;
   }
 }
 

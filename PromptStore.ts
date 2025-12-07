@@ -319,3 +319,12 @@ export class EmbeddedPromptStore {
     });
   }
 }
+
+
+/**
+ * Factory function to create a PromptStore instance
+ */
+export function createPromptStore(app: App, pluginDir?: string): PromptStore {
+  const dir = pluginDir || `${app.vault.configDir}/plugins/career-os`;
+  return new PromptStore(app, dir);
+}

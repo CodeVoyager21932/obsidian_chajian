@@ -1,6 +1,11 @@
-import { Plugin, TFile } from 'obsidian';
-import { CareerOSSettings } from './types';
+import { Plugin, TFile, Notice } from 'obsidian';
+import { CareerOSSettings, QueueStatus } from './types';
 import { CareerOSSettingsSchema, CURRENT_SCHEMA_VERSION } from './schema';
+import { ProfileEngine, createProfileEngine } from './ProfileEngine';
+import { LLMClient, createLLMClient } from './llmClient';
+import { IndexStore } from './IndexStore';
+import { PromptStore, createPromptStore } from './PromptStore';
+import { PrivacyGuard, createPrivacyGuard } from './PrivacyGuard';
 
 // Default settings
 const DEFAULT_SETTINGS: CareerOSSettings = {
@@ -46,12 +51,28 @@ const DEFAULT_SETTINGS: CareerOSSettings = {
 
 export default class CareerOSPlugin extends Plugin {
   settings: CareerOSSettings;
+  
+  // Core services
+  private profileEngine?: ProfileEngine;
+  private llmClient?: LLMClient;
+  private indexStore?: IndexStore;
+  private promptStore?: PromptStore;
+  private privacyGuard?: PrivacyGuard;
+  
+  // Plugin data directory
+  private pluginDataDir: string = '';
 
   async onload() {
     console.log('Loading CareerOS plugin');
 
     // Load settings
     await this.loadSettings();
+    
+    // Initialize plugin data directory
+    this.pluginDataDir = `${this.app.vault.configDir}/plugins/career-os`;
+    
+    // Initialize core services
+    await this.initializeServices();
 
     // Register commands
     this.registerCommands();
@@ -64,6 +85,40 @@ export default class CareerOSPlugin extends Plugin {
       console.log('CareerOS Dashboard clicked');
       // TODO: Open dashboard view
     });
+  }
+  
+  /**
+   * Initialize core services
+   */
+  private async initializeServices(): Promise<void> {
+    // Create LLM client
+    this.llmClient = createLLMClient(this.settings);
+    
+    // Create IndexStore
+    this.indexStore = new IndexStore(
+      this.app,
+      this.pluginDataDir,
+      this.settings.indexDirectory,
+      this.settings.mappingDirectory,
+      this.settings.marketCardsDirectory
+    );
+    
+    // Create PromptStore
+    this.promptStore = createPromptStore(this.app);
+    
+    // Create PrivacyGuard
+    this.privacyGuard = createPrivacyGuard(this.settings.exclusionRules);
+    
+    // Create ProfileEngine
+    this.profileEngine = createProfileEngine(
+      this.app,
+      this.settings,
+      this.llmClient,
+      this.indexStore,
+      this.promptStore,
+      this.privacyGuard,
+      this.pluginDataDir
+    );
   }
 
   onunload() {
@@ -92,9 +147,50 @@ export default class CareerOSPlugin extends Plugin {
     this.addCommand({
       id: 'cold-start-indexing',
       name: 'Cold Start Indexing',
+      callback: async () => {
+        await this.runColdStartIndexing();
+      },
+    });
+    
+    // Pause Indexing
+    this.addCommand({
+      id: 'pause-indexing',
+      name: 'Pause Indexing',
       callback: () => {
-        console.log('Cold Start Indexing command triggered');
-        // TODO: Implement cold start indexing
+        if (this.profileEngine?.isIndexingRunning()) {
+          this.profileEngine.pauseIndexing();
+          new Notice('Indexing paused');
+        } else {
+          new Notice('No indexing in progress');
+        }
+      },
+    });
+    
+    // Resume Indexing
+    this.addCommand({
+      id: 'resume-indexing',
+      name: 'Resume Indexing',
+      callback: () => {
+        if (this.profileEngine?.isIndexingPaused()) {
+          this.profileEngine.resumeIndexing();
+          new Notice('Indexing resumed');
+        } else {
+          new Notice('Indexing is not paused');
+        }
+      },
+    });
+    
+    // Cancel Indexing
+    this.addCommand({
+      id: 'cancel-indexing',
+      name: 'Cancel Indexing',
+      callback: () => {
+        if (this.profileEngine?.isIndexingRunning() || this.profileEngine?.isIndexingPaused()) {
+          this.profileEngine.cancelIndexing();
+          new Notice('Indexing cancelled');
+        } else {
+          new Notice('No indexing in progress');
+        }
       },
     });
 
@@ -218,5 +314,80 @@ export default class CareerOSPlugin extends Plugin {
     // TODO: Implement deletion handling
     // 1. Mark NoteCard as deleted
     // 2. Don't physically remove card file
+  }
+  
+  /**
+   * Run cold start indexing
+   * 
+   * Requirements: 4.1, 4.2, 4.3, 15.1, 15.2, 15.3
+   */
+  private async runColdStartIndexing(): Promise<void> {
+    if (!this.profileEngine) {
+      new Notice('ProfileEngine not initialized');
+      return;
+    }
+    
+    // Check if already running
+    if (this.profileEngine.isIndexingRunning()) {
+      new Notice('Indexing is already in progress');
+      return;
+    }
+    
+    const isDryRun = this.settings.dryRunEnabled;
+    
+    // Show start notice
+    if (isDryRun) {
+      new Notice(`Starting dry-run indexing (max ${this.settings.dryRunMaxNotes} notes)...`);
+    } else {
+      new Notice('Starting cold start indexing...');
+    }
+    
+    // Track progress for UI updates
+    let lastProgressUpdate = 0;
+    const progressCallback = (status: QueueStatus) => {
+      // Throttle progress updates to avoid too many notices
+      const now = Date.now();
+      if (now - lastProgressUpdate > 2000) { // Update every 2 seconds
+        lastProgressUpdate = now;
+        const percent = status.total > 0 
+          ? Math.round((status.completed / status.total) * 100) 
+          : 0;
+        new Notice(`Indexing progress: ${status.completed}/${status.total} (${percent}%)`);
+      }
+    };
+    
+    try {
+      // Run cold start indexing
+      // Empty array means scan entire vault
+      const result = await this.profileEngine.coldStartIndex(
+        [], // Scan entire vault
+        {
+          dryRun: isDryRun,
+          maxNotes: isDryRun ? this.settings.dryRunMaxNotes : undefined,
+          concurrency: this.settings.concurrency,
+        },
+        progressCallback
+      );
+      
+      // Show completion notice
+      if (isDryRun) {
+        new Notice(
+          `Dry-run complete: ${result.processedNotes} processed, ${result.failedNotes} failed. Check console for details.`
+        );
+      } else {
+        new Notice(
+          `Indexing complete: ${result.processedNotes} notes indexed, ${result.failedNotes} failed`
+        );
+      }
+      
+      // Log errors if any
+      if (result.errors.length > 0) {
+        console.log('Indexing errors:', result.errors);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      new Notice(`Indexing failed: ${errorMessage}`);
+      console.error('Cold start indexing error:', error);
+    }
   }
 }

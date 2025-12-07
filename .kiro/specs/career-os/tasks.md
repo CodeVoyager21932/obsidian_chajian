@@ -308,7 +308,9 @@
   - Display clear warnings for external LLM usage
   - _Requirements: 3.5, 12.1, 12.5, 13.3_
 
-- [-] 16. Implement dashboard view foundation
+- [x] 16. Implement dashboard view foundation
+
+
 
 
 
@@ -318,7 +320,10 @@
   - Add refresh button to trigger SelfProfile rebuild
   - _Requirements: 11.4_
 
-- [ ] 17. Implement dashboard skills and projects display
+- [-] 17. Implement dashboard skills and projects display
+
+
+
   - Display top N skills with proficiency levels and evidence counts
   - Display recent M projects from SelfProfile
   - Add skill detail view (click to see evidence notes)

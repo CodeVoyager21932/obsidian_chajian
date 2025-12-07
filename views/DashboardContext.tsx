@@ -12,7 +12,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { SelfProfile, MarketProfile, QueueStatus } from '../types';
+import { SelfProfile, MarketProfile, QueueStatus, SkillProfile, ProjectSummary } from '../types';
 
 // ============================================================================
 // Types
@@ -48,6 +48,10 @@ export interface DashboardState {
   
   // Errors
   error: DashboardError | null;
+  
+  // Detail view states
+  selectedSkill: SkillProfile | null;
+  selectedProject: ProjectSummary | null;
 }
 
 export interface DashboardActions {
@@ -67,6 +71,10 @@ export interface DashboardActions {
   
   // Clear error
   clearError: () => void;
+  
+  // Detail view actions
+  selectSkill: (skill: SkillProfile | null) => void;
+  selectProject: (project: ProjectSummary | null) => void;
 }
 
 export interface DashboardContextValue extends DashboardState, DashboardActions {}
@@ -115,6 +123,10 @@ export function DashboardProvider({
     marketProfileComplete: false,
     actionPlanComplete: false,
   });
+  
+  // Detail view states
+  const [selectedSkill, setSelectedSkill] = useState<SkillProfile | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectSummary | null>(null);
 
   // Load all dashboard data
   const loadDashboardData = useCallback(async () => {
@@ -186,6 +198,15 @@ export function DashboardProvider({
   const clearError = useCallback(() => {
     setError(null);
   }, []);
+  
+  // Detail view actions
+  const selectSkill = useCallback((skill: SkillProfile | null) => {
+    setSelectedSkill(skill);
+  }, []);
+  
+  const selectProject = useCallback((project: ProjectSummary | null) => {
+    setSelectedProject(project);
+  }, []);
 
   // Context value
   const value: DashboardContextValue = {
@@ -198,6 +219,8 @@ export function DashboardProvider({
     workflowStatus,
     queueStatus,
     error,
+    selectedSkill,
+    selectedProject,
     
     // Actions
     loadDashboardData,
@@ -209,6 +232,8 @@ export function DashboardProvider({
     setError,
     setWorkflowStatus,
     clearError,
+    selectSkill,
+    selectProject,
   };
 
   return (

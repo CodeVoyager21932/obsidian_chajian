@@ -13,7 +13,7 @@
 import React, { useEffect } from 'react';
 import { ItemView, WorkspaceLeaf } from 'obsidian';
 import { createRoot, Root } from 'react-dom/client';
-import { SelfProfile, MarketProfile, SkillProfile, ProjectSummary } from '../types';
+import { SelfProfile, MarketProfile, SkillProfile, ProjectSummary, TechItem } from '../types';
 import { DashboardProvider, useDashboard, WorkflowStatus } from './DashboardContext';
 
 // ============================================================================
@@ -78,9 +78,10 @@ function LoadingIndicator(): JSX.Element {
 
 /**
  * Skills section - displays top skills with proficiency levels
+ * Requirements: 11.1
  */
 function SkillsSection(): JSX.Element {
-  const { selfProfile } = useDashboard();
+  const { selfProfile, selectedSkill, selectSkill } = useDashboard();
   
   const skills = selfProfile?.analysis_view?.top_skills || selfProfile?.skills.slice(0, 15) || [];
   
@@ -101,22 +102,48 @@ function SkillsSection(): JSX.Element {
       <h3>🎯 Top Skills</h3>
       <div className="career-os-skills-list">
         {skills.map((skill, index) => (
-          <SkillItem key={skill.name} skill={skill} rank={index + 1} />
+          <SkillItem 
+            key={skill.name} 
+            skill={skill} 
+            rank={index + 1}
+            isSelected={selectedSkill?.name === skill.name}
+            onSelect={() => selectSkill(selectedSkill?.name === skill.name ? null : skill)}
+          />
         ))}
       </div>
+      
+      {/* Skill Detail Panel */}
+      {selectedSkill && (
+        <SkillDetailPanel skill={selectedSkill} onClose={() => selectSkill(null)} />
+      )}
     </div>
   );
 }
 
 /**
- * Single skill item with level bar
+ * Single skill item with level bar (clickable for detail view)
+ * Requirements: 11.1
  */
-function SkillItem({ skill, rank }: { skill: SkillProfile; rank: number }): JSX.Element {
+interface SkillItemProps {
+  skill: SkillProfile;
+  rank: number;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+function SkillItem({ skill, rank, isSelected, onSelect }: SkillItemProps): JSX.Element {
   const levelPercent = (skill.level / 5) * 100;
   const levelLabel = getLevelLabel(skill.level);
   
   return (
-    <div className="career-os-skill-item">
+    <div 
+      className={`career-os-skill-item ${isSelected ? 'selected' : ''}`}
+      onClick={onSelect}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onSelect()}
+      title="Click to view evidence notes"
+    >
       <div className="career-os-skill-header">
         <span className="career-os-skill-rank">#{rank}</span>
         <span className="career-os-skill-name">{skill.name}</span>
@@ -139,6 +166,61 @@ function SkillItem({ skill, rank }: { skill: SkillProfile; rank: number }): JSX.
 }
 
 /**
+ * Skill detail panel - shows evidence notes for selected skill
+ * Requirements: 11.1
+ */
+function SkillDetailPanel({ skill, onClose }: { skill: SkillProfile; onClose: () => void }): JSX.Element {
+  const levelLabel = getLevelLabel(skill.level);
+  
+  return (
+    <div className="career-os-detail-panel career-os-skill-detail">
+      <div className="career-os-detail-header">
+        <h4>{skill.name}</h4>
+        <button className="career-os-detail-close" onClick={onClose} title="Close">×</button>
+      </div>
+      
+      <div className="career-os-detail-content">
+        <div className="career-os-detail-meta">
+          <div className="career-os-detail-meta-item">
+            <span className="career-os-detail-label">Level:</span>
+            <span className="career-os-detail-value">{levelLabel} ({skill.level.toFixed(2)})</span>
+          </div>
+          {skill.category && (
+            <div className="career-os-detail-meta-item">
+              <span className="career-os-detail-label">Category:</span>
+              <span className="career-os-detail-value">{skill.category}</span>
+            </div>
+          )}
+          <div className="career-os-detail-meta-item">
+            <span className="career-os-detail-label">Last Active:</span>
+            <span className="career-os-detail-value">{skill.last_active || 'N/A'}</span>
+          </div>
+        </div>
+        
+        <div className="career-os-evidence-section">
+          <h5>📝 Evidence Notes ({skill.evidence_notes.length})</h5>
+          {skill.evidence_notes.length === 0 ? (
+            <p className="career-os-no-evidence">No evidence notes found.</p>
+          ) : (
+            <ul className="career-os-evidence-list">
+              {skill.evidence_notes.map((notePath, index) => {
+                const noteName = notePath.split('/').pop()?.replace('.md', '') || notePath;
+                return (
+                  <li key={index} className="career-os-evidence-item">
+                    <span className="career-os-evidence-icon">📄</span>
+                    <span className="career-os-evidence-path" title={notePath}>{noteName}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Convert numeric level to label
  */
 function getLevelLabel(level: number): string {
@@ -150,9 +232,10 @@ function getLevelLabel(level: number): string {
 
 /**
  * Projects section - displays recent projects
+ * Requirements: 11.2
  */
 function ProjectsSection(): JSX.Element {
-  const { selfProfile } = useDashboard();
+  const { selfProfile, selectedProject, selectProject } = useDashboard();
   
   const projects = selfProfile?.analysis_view?.recent_projects || selfProfile?.projects.slice(0, 5) || [];
   
@@ -173,22 +256,46 @@ function ProjectsSection(): JSX.Element {
       <h3>📁 Recent Projects</h3>
       <div className="career-os-projects-list">
         {projects.map((project) => (
-          <ProjectItem key={project.note_path} project={project} />
+          <ProjectItem 
+            key={project.note_path} 
+            project={project}
+            isSelected={selectedProject?.note_path === project.note_path}
+            onSelect={() => selectProject(selectedProject?.note_path === project.note_path ? null : project)}
+          />
         ))}
       </div>
+      
+      {/* Project Detail Panel */}
+      {selectedProject && (
+        <ProjectDetailPanel project={selectedProject} onClose={() => selectProject(null)} />
+      )}
     </div>
   );
 }
 
 /**
- * Single project item
+ * Single project item (clickable for detail view)
+ * Requirements: 11.2
  */
-function ProjectItem({ project }: { project: ProjectSummary }): JSX.Element {
+interface ProjectItemProps {
+  project: ProjectSummary;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+function ProjectItem({ project, isSelected, onSelect }: ProjectItemProps): JSX.Element {
   const projectName = project.note_path.split('/').pop()?.replace('.md', '') || 'Project';
   const techList = project.tech_stack.map(t => t.name).slice(0, 5);
   
   return (
-    <div className="career-os-project-item">
+    <div 
+      className={`career-os-project-item ${isSelected ? 'selected' : ''}`}
+      onClick={onSelect}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onSelect()}
+      title="Click to view full project details"
+    >
       <div className="career-os-project-header">
         <span className="career-os-project-name">{projectName}</span>
         {project.time_span && (
@@ -209,6 +316,73 @@ function ProjectItem({ project }: { project: ProjectSummary }): JSX.Element {
             <span className="career-os-tech-more">+{project.tech_stack.length - 5}</span>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Project detail panel - shows full project summary and tech stack
+ * Requirements: 11.2
+ */
+function ProjectDetailPanel({ project, onClose }: { project: ProjectSummary; onClose: () => void }): JSX.Element {
+  const projectName = project.note_path.split('/').pop()?.replace('.md', '') || 'Project';
+  
+  return (
+    <div className="career-os-detail-panel career-os-project-detail">
+      <div className="career-os-detail-header">
+        <h4>{projectName}</h4>
+        <button className="career-os-detail-close" onClick={onClose} title="Close">×</button>
+      </div>
+      
+      <div className="career-os-detail-content">
+        <div className="career-os-detail-meta">
+          <div className="career-os-detail-meta-item">
+            <span className="career-os-detail-label">Path:</span>
+            <span className="career-os-detail-value career-os-path-value" title={project.note_path}>
+              {project.note_path}
+            </span>
+          </div>
+          {project.time_span && (
+            <div className="career-os-detail-meta-item">
+              <span className="career-os-detail-label">Time Span:</span>
+              <span className="career-os-detail-value">{project.time_span}</span>
+            </div>
+          )}
+        </div>
+        
+        <div className="career-os-summary-section">
+          <h5>📋 Summary</h5>
+          <p className="career-os-full-summary">{project.summary}</p>
+        </div>
+        
+        {project.tech_stack.length > 0 && (
+          <div className="career-os-tech-section">
+            <h5>🛠️ Tech Stack ({project.tech_stack.length})</h5>
+            <div className="career-os-tech-detail-list">
+              {project.tech_stack.map((tech, index) => (
+                <TechStackItem key={index} tech={tech} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Tech stack item with level and context
+ */
+function TechStackItem({ tech }: { tech: TechItem }): JSX.Element {
+  return (
+    <div className="career-os-tech-detail-item">
+      <div className="career-os-tech-detail-header">
+        <span className="career-os-tech-detail-name">{tech.name}</span>
+        <span className="career-os-tech-detail-level">{tech.level}</span>
+      </div>
+      {tech.context && (
+        <p className="career-os-tech-detail-context">{tech.context}</p>
       )}
     </div>
   );

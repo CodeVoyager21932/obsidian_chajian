@@ -49,7 +49,9 @@
   - **Property 12: Pause and resume consistency**
   - **Validates: Requirements 4.4**
 
-- [-] 3. Implement file service and index store
+- [x] 3. Implement file service and index store
+
+
 
 
 
@@ -77,7 +79,12 @@
   - **Property 16: Schema version migration**
   - **Validates: Requirements 5.5**
 
-- [ ] 4. Implement privacy guard and taxonomy
+- [x] 4. Implement privacy guard and taxonomy
+
+
+
+
+
   - Create PrivacyGuard in PrivacyGuard.ts with PII filtering (email, phone, names)
   - Implement directory and tag exclusion checking
   - Build Taxonomy in Taxonomy.ts for skill name normalization
@@ -96,7 +103,11 @@
   - **Property 18: Skill normalization consistency**
   - **Validates: Requirements 7.1, 8.2, 13.1, 13.4**
 
-- [ ] 5. Create prompt templates
+- [x] 5. Create prompt templates
+
+
+
+
   - Create prompts/ directory
   - Write noteCardPrompt.txt for NoteCard extraction (PROMPT 1)
   - Write jdCardPrompt.txt for JDCard extraction (PROMPT 2)

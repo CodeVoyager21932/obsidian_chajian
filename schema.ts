@@ -1,5 +1,19 @@
 /**
- * Zod schemas for runtime validation and type safety
+ * Zod Schemas for Runtime Validation and Type Safety
+ * 
+ * This module defines all data schemas used in CareerOS for:
+ * - Runtime validation of LLM outputs
+ * - Type inference for TypeScript
+ * - Schema versioning and migration
+ * 
+ * Key Design Decisions:
+ * 1. All core data structures include schema_version for future migrations
+ * 2. Schemas are designed to be strict but allow optional fields for flexibility
+ * 3. String enums are used for type safety on categorical fields
+ * 
+ * Requirements: 5.2, 5.5
+ * - Property 14: JSON cleaning and validation
+ * - Property 16: Schema version migration
  */
 
 import { z } from 'zod';
@@ -8,41 +22,92 @@ import { z } from 'zod';
 // Schema Version
 // ============================================================================
 
+/**
+ * Current schema version for all data structures.
+ * Increment this when making breaking changes to schemas.
+ * 
+ * Version History:
+ * - v1 (2024-12): Initial release
+ */
 export const CURRENT_SCHEMA_VERSION = 1;
 
 // ============================================================================
 // NoteCard Schemas
 // ============================================================================
 
+/**
+ * Note type classification for different kinds of user notes.
+ * 
+ * - project: Technical project notes with implementation details
+ * - course: Learning/course notes with educational content
+ * - reflection: Personal reflections, career thoughts, preferences
+ * - other: Uncategorized notes
+ * 
+ * Note type affects skill scoring weights (see ProfileEngine.ts)
+ */
 export const NoteTypeSchema = z.enum(['project', 'course', 'reflection', 'other']);
 
+/**
+ * Technical skill item extracted from notes.
+ * 
+ * Property 1: Skill names are preserved exactly as written in the source note.
+ * Normalization happens later in ProfileEngine using Taxonomy.
+ * 
+ * Proficiency levels (Chinese):
+ * - 入门 (Beginner): Basic understanding, limited practical experience
+ * - 熟悉 (Familiar): Working knowledge, can use with guidance
+ * - 熟练 (Proficient): Strong skills, can work independently
+ * - 精通 (Expert): Deep expertise, can mentor others
+ */
 export const TechItemSchema = z.object({
-  name: z.string(),
-  context: z.string(),
+  name: z.string(),           // Original skill name (not normalized)
+  context: z.string(),        // Usage context or description
   level: z.enum(['入门', '熟悉', '熟练', '精通']),
 });
 
+/**
+ * User preferences extracted from notes.
+ * 
+ * Property 2: Preferences are only extracted when explicitly stated.
+ * The LLM should not infer preferences from context.
+ * 
+ * - likes: Things the user explicitly enjoys or prefers
+ * - dislikes: Things the user explicitly dislikes or avoids
+ * - traits: Personal characteristics or work style attributes
+ */
 export const PreferencesSchema = z.object({
   likes: z.array(z.string()),
   dislikes: z.array(z.string()),
   traits: z.array(z.string()),
 });
 
+/**
+ * NoteCard - Structured representation of a single note's career-relevant information.
+ * 
+ * This is the primary data structure for storing extracted information from user notes.
+ * Each note in the vault can have at most one corresponding NoteCard.
+ * 
+ * Key Properties:
+ * - Property 3: hash is used for change detection (content hash consistency)
+ * - Property 4: Empty values are used for unknown fields (no guessing)
+ * 
+ * File Location: {indexDirectory}/{sanitized_note_path}.json
+ */
 export const NoteCardSchema = z.object({
-  schema_version: z.number(),
-  note_path: z.string(),
-  hash: z.string(),
-  summary: z.string(),
-  type: NoteTypeSchema,
-  time_span: z.string(),
-  tech_stack: z.array(TechItemSchema),
-  topics: z.array(z.string()),
-  preferences: PreferencesSchema,
-  evidence: z.array(z.string()),
-  last_updated: z.string(),
-  detected_date: z.string(),
-  status: z.enum(['draft', 'confirmed']).optional(),
-  deleted: z.boolean().optional(),
+  schema_version: z.number(),           // Schema version for migration
+  note_path: z.string(),                // Relative path to source note in vault
+  hash: z.string(),                     // Content hash for change detection
+  summary: z.string(),                  // Brief summary of the note (1-2 sentences)
+  type: NoteTypeSchema,                 // Note classification
+  time_span: z.string(),                // Time period (e.g., "2023-01 到 2023-06")
+  tech_stack: z.array(TechItemSchema),  // Technical skills mentioned
+  topics: z.array(z.string()),          // Topic tags
+  preferences: PreferencesSchema,       // User preferences (conservative extraction)
+  evidence: z.array(z.string()),        // Concrete achievements or facts
+  last_updated: z.string(),             // Inferred last update time
+  detected_date: z.string(),            // When this card was created/updated
+  status: z.enum(['draft', 'confirmed']).optional(),  // Review status
+  deleted: z.boolean().optional(),      // Soft delete flag
 });
 
 export type NoteCardType = z.infer<typeof NoteCardSchema>;
@@ -51,23 +116,35 @@ export type NoteCardType = z.infer<typeof NoteCardSchema>;
 // JDCard Schemas
 // ============================================================================
 
+/**
+ * JDCard - Structured representation of a job description.
+ * 
+ * Multiple JDCards can be extracted from a single market note.
+ * Each JDCard represents one job posting.
+ * 
+ * Key Properties:
+ * - Property 17: raw_text_hash is used for deduplication
+ * - jd_id is preserved when updating existing cards
+ * 
+ * File Location: {marketCardsDirectory}/{jd_id}.json
+ */
 export const JDCardSchema = z.object({
-  schema_version: z.number(),
-  jd_id: z.string(),
-  source_note: z.string(),
-  company: z.string(),
-  title: z.string(),
-  location: z.string(),
-  salary_range: z.string(),
-  skills_required: z.array(z.string()),
-  skills_optional: z.array(z.string()),
-  experience: z.string(),
-  degree: z.string(),
-  raw_text_hash: z.string(),
-  tags: z.array(z.string()),
-  created_at: z.string(),
-  updated_at: z.string(),
-  deleted: z.boolean().optional(),
+  schema_version: z.number(),           // Schema version for migration
+  jd_id: z.string(),                    // UUID, preserved on updates
+  source_note: z.string(),              // Path to source market note
+  company: z.string(),                  // Company name
+  title: z.string(),                    // Job title
+  location: z.string(),                 // Work location
+  salary_range: z.string(),             // Salary range (e.g., "15k-25k")
+  skills_required: z.array(z.string()), // Required skills
+  skills_optional: z.array(z.string()), // Nice-to-have skills
+  experience: z.string(),               // Experience requirement
+  degree: z.string(),                   // Education requirement
+  raw_text_hash: z.string(),            // Hash for deduplication
+  tags: z.array(z.string()),            // Classification tags
+  created_at: z.string(),               // First extraction time
+  updated_at: z.string(),               // Last update time
+  deleted: z.boolean().optional(),      // Soft delete flag
 });
 
 export type JDCardType = z.infer<typeof JDCardSchema>;
@@ -76,21 +153,37 @@ export type JDCardType = z.infer<typeof JDCardSchema>;
 // SelfProfile Schemas
 // ============================================================================
 
+/**
+ * Skill category classification for organizing skills.
+ * 
+ * Categories are assigned via Taxonomy configuration.
+ * Used for grouping and visualization in the dashboard.
+ */
 export const SkillCategorySchema = z.enum([
-  'language',
-  'framework',
-  'database',
-  'tool',
-  'platform',
-  'soft',
+  'language',   // Programming languages (Python, JavaScript, etc.)
+  'framework',  // Frameworks and libraries (React, Django, etc.)
+  'database',   // Databases (PostgreSQL, Redis, etc.)
+  'tool',       // Development tools (Git, Docker, etc.)
+  'platform',   // Platforms and cloud services (AWS, Linux, etc.)
+  'soft',       // Soft skills (Communication, Leadership, etc.)
 ]);
 
+/**
+ * Aggregated skill profile with weighted scoring.
+ * 
+ * Property 18: Skill names are normalized using Taxonomy
+ * Property 19: Level is calculated with time decay weighting
+ * 
+ * Level calculation formula:
+ *   score = Σ(skill_level × note_type_weight × time_decay)
+ *   normalized_level = (score / max_score) × 5
+ */
 export const SkillProfileSchema = z.object({
-  name: z.string(),
+  name: z.string(),                     // Normalized skill name
   category: SkillCategorySchema.optional(),
-  level: z.number().min(0).max(5),
-  evidence_notes: z.array(z.string()),
-  last_active: z.string(),
+  level: z.number().min(0).max(5),      // Weighted proficiency (0-5)
+  evidence_notes: z.array(z.string()),  // Source NoteCard paths
+  last_active: z.string(),              // Most recent activity date
 });
 
 export const ProjectSummarySchema = z.object({
@@ -100,16 +193,27 @@ export const ProjectSummarySchema = z.object({
   time_span: z.string(),
 });
 
+/**
+ * SelfProfile - Aggregated self-capability profile.
+ * 
+ * Built from all non-deleted NoteCards in the index.
+ * Saved as both JSON and Markdown formats.
+ * 
+ * Property 20: Profile serialization round-trip
+ * Property 21: analysis_view provides compressed data for LLM context
+ * 
+ * File Location: {mappingDirectory}/self_profile_{date}.json
+ */
 export const SelfProfileSchema = z.object({
   schema_version: z.number(),
-  skills: z.array(SkillProfileSchema),
-  preferences: PreferencesSchema,
-  projects: z.array(ProjectSummarySchema),
-  analysis_view: z.object({
-    top_skills: z.array(SkillProfileSchema),
-    recent_projects: z.array(ProjectSummarySchema),
+  skills: z.array(SkillProfileSchema),          // All aggregated skills
+  preferences: PreferencesSchema,               // Aggregated preferences
+  projects: z.array(ProjectSummarySchema),      // All project summaries
+  analysis_view: z.object({                     // Compressed view for LLM
+    top_skills: z.array(SkillProfileSchema),    // Top N skills by level
+    recent_projects: z.array(ProjectSummarySchema), // Recent M projects
   }).optional(),
-  last_built: z.string(),
+  last_built: z.string(),                       // Build timestamp
 });
 
 export type SelfProfileType = z.infer<typeof SelfProfileSchema>;

@@ -16,6 +16,7 @@ import { createRoot, Root } from 'react-dom/client';
 import { SelfProfile, MarketProfile, SkillProfile, ProjectSummary, TechItem, ErrorLogSummary, ErrorLogEntry, ErrorType, MarketProfileSummary, GapAnalysisSummary, ActionPlanSummary } from '../types';
 import { DashboardProvider, useDashboard } from './DashboardContext';
 import { getErrorTypeLabel, getErrorTypeIcon } from '../utils/errorLogParser';
+import { ProgressTracker, ProgressNotification } from './ProgressTracker';
 
 // ============================================================================
 // Constants
@@ -1140,6 +1141,81 @@ function formatDate(dateStr: string): string {
 // ============================================================================
 
 /**
+ * Progress section - displays active progress tracking
+ * Requirements: 4.3, 4.4
+ */
+function ProgressSection(): JSX.Element | null {
+  const { 
+    progressTracking, 
+    queueStatus, 
+    pauseProgress, 
+    resumeProgress, 
+    cancelProgress,
+    isIndexingNotes,
+    isExtractingJDs,
+    isGeneratingPlan,
+  } = useDashboard();
+  
+  // Determine if any operation is active
+  const isAnyOperationActive = isIndexingNotes || isExtractingJDs || isGeneratingPlan || progressTracking.isActive;
+  
+  // Determine operation label
+  let operationLabel = progressTracking.operationLabel;
+  if (!operationLabel) {
+    if (isIndexingNotes) operationLabel = '索引笔记中...';
+    else if (isExtractingJDs) operationLabel = '提取 JD 中...';
+    else if (isGeneratingPlan) operationLabel = '生成计划中...';
+  }
+  
+  if (!isAnyOperationActive || !queueStatus) {
+    return null;
+  }
+  
+  return (
+    <div className="career-os-progress-section">
+      <ProgressTracker
+        status={queueStatus}
+        operationLabel={operationLabel}
+        isActive={isAnyOperationActive}
+        onPause={pauseProgress}
+        onResume={resumeProgress}
+        onCancel={cancelProgress}
+        supportsPauseResume={true}
+        supportsCancel={true}
+        startTime={progressTracking.startTime ?? undefined}
+      />
+    </div>
+  );
+}
+
+/**
+ * Notifications section - displays success/failure notifications
+ * Requirements: 4.3, 4.4
+ */
+function NotificationsSection(): JSX.Element | null {
+  const { notifications, dismissNotification } = useDashboard();
+  
+  if (notifications.length === 0) {
+    return null;
+  }
+  
+  return (
+    <div className="career-os-notifications-section">
+      {notifications.map((notification) => (
+        <ProgressNotification
+          key={notification.id}
+          type={notification.type}
+          message={notification.message}
+          details={notification.details}
+          onDismiss={() => dismissNotification(notification.id)}
+          autoDismissMs={notification.type === 'success' ? 5000 : 0}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
  * Main dashboard content component
  */
 function DashboardContent(): JSX.Element {
@@ -1158,6 +1234,8 @@ function DashboardContent(): JSX.Element {
     <div className="career-os-dashboard">
       <DashboardHeader />
       <ErrorBanner />
+      <NotificationsSection />
+      <ProgressSection />
       
       <div className="career-os-dashboard-grid">
         <div className="career-os-main-column">
@@ -1202,6 +1280,11 @@ export interface DashboardAppProps {
   // Action plan callbacks
   onSetActivePlan?: (planPath: string) => Promise<void>;
   onLoadActivePlan?: () => Promise<string | null>;
+  
+  // Progress tracking callbacks (Requirements: 4.3, 4.4)
+  onPauseQueue?: () => void;
+  onResumeQueue?: () => void;
+  onCancelQueue?: () => void;
 }
 
 /**

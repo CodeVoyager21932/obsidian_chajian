@@ -369,7 +369,11 @@
   - Add "Set as Active Plan" button
   - _Requirements: 9.5, 10.5_
 
-- [-] 21. Implement command registry
+- [x] 21. Implement command registry
+
+
+
+
 
 
 
@@ -382,7 +386,12 @@
   - Register "CareerOS: Open Dashboard" command
   - Register "CareerOS: View Error Log" command
 
-- [ ] 22. Implement error logging system
+- [x] 22. Implement error logging system
+
+
+
+
+
   - Create logger.ts utility
   - Implement error_log.md writer with structured format
   - Add timestamp, error type, file path, and error details to each entry
@@ -394,7 +403,10 @@
   - **Property 13: Error logging and continuation**
   - **Validates: Requirements 4.5**
 
-- [ ] 23. Add progress tracking and UI feedback
+- [-] 23. Add progress tracking and UI feedback
+
+
+
   - Implement progress bar component for indexing operations
   - Show real-time progress updates (completed/total tasks)
   - Add pause/resume/cancel buttons for long-running operations

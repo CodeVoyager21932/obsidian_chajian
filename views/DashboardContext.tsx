@@ -30,6 +30,32 @@ export interface DashboardError {
   type: 'load' | 'refresh' | 'action';
 }
 
+/**
+ * Progress tracking state for long-running operations
+ * Requirements: 4.3, 4.4
+ */
+export interface ProgressTrackingState {
+  /** Whether progress tracking is active */
+  isActive: boolean;
+  /** Current operation label */
+  operationLabel: string;
+  /** Start time of the operation */
+  startTime: number | null;
+  /** Whether the operation is paused */
+  isPaused: boolean;
+}
+
+/**
+ * Notification for operation completion
+ */
+export interface ProgressNotification {
+  id: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  message: string;
+  details?: string;
+  timestamp: string;
+}
+
 export interface DashboardState {
   // Data
   selfProfile: SelfProfile | null;
@@ -48,6 +74,10 @@ export interface DashboardState {
   isLoading: boolean;
   isRefreshing: boolean;
   isLoadingErrorLog: boolean;
+  
+  // Progress tracking state (Requirements: 4.3, 4.4)
+  progressTracking: ProgressTrackingState;
+  notifications: ProgressNotification[];
   isBuildingMarketProfile: boolean;
   
   // Workflow status
@@ -104,6 +134,16 @@ export interface DashboardActions {
   // Action plan actions
   setActivePlan: (planPath: string) => Promise<void>;
   
+  // Progress tracking actions (Requirements: 4.3, 4.4)
+  startProgressTracking: (operationLabel: string) => void;
+  stopProgressTracking: () => void;
+  pauseProgress: () => void;
+  resumeProgress: () => void;
+  cancelProgress: () => void;
+  addNotification: (notification: Omit<ProgressNotification, 'id' | 'timestamp'>) => void;
+  dismissNotification: (id: string) => void;
+  clearAllNotifications: () => void;
+  
   // Workflow action loading states
   isIndexingNotes: boolean;
   isExtractingJDs: boolean;
@@ -118,6 +158,9 @@ export interface WorkflowActionStates {
 
 export interface DashboardContextValue extends DashboardState, Omit<DashboardActions, 'isIndexingNotes' | 'isExtractingJDs' | 'isGeneratingPlan'>, WorkflowActionStates {
   isBuildingMarketProfile: boolean;
+  // Progress tracking state
+  progressTracking: ProgressTrackingState;
+  notifications: ProgressNotification[];
 }
 
 // ============================================================================
@@ -155,6 +198,11 @@ export interface DashboardProviderProps {
   // Action plan callbacks
   onSetActivePlan?: (planPath: string) => Promise<void>;
   onLoadActivePlan?: () => Promise<string | null>;
+  
+  // Progress tracking callbacks (Requirements: 4.3, 4.4)
+  onPauseQueue?: () => void;
+  onResumeQueue?: () => void;
+  onCancelQueue?: () => void;
 }
 
 // ============================================================================
@@ -178,6 +226,9 @@ export function DashboardProvider({
   onBuildMarketProfile,
   onSetActivePlan,
   onLoadActivePlan,
+  onPauseQueue,
+  onResumeQueue,
+  onCancelQueue,
 }: DashboardProviderProps): JSX.Element {
   // State
   const [selfProfile, setSelfProfile] = useState<SelfProfile | null>(null);
@@ -210,6 +261,15 @@ export function DashboardProvider({
   const [isIndexingNotes, setIsIndexingNotes] = useState<boolean>(false);
   const [isExtractingJDs, setIsExtractingJDs] = useState<boolean>(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState<boolean>(false);
+  
+  // Progress tracking state (Requirements: 4.3, 4.4)
+  const [progressTracking, setProgressTracking] = useState<ProgressTrackingState>({
+    isActive: false,
+    operationLabel: '',
+    startTime: null,
+    isPaused: false,
+  });
+  const [notifications, setNotifications] = useState<ProgressNotification[]>([]);
 
   // Load all dashboard data
   const loadDashboardData = useCallback(async () => {
@@ -501,6 +561,63 @@ export function DashboardProvider({
       });
     }
   }, [onSetActivePlan]);
+  
+  // Progress tracking actions (Requirements: 4.3, 4.4)
+  const startProgressTracking = useCallback((operationLabel: string) => {
+    setProgressTracking({
+      isActive: true,
+      operationLabel,
+      startTime: Date.now(),
+      isPaused: false,
+    });
+  }, []);
+  
+  const stopProgressTracking = useCallback(() => {
+    setProgressTracking({
+      isActive: false,
+      operationLabel: '',
+      startTime: null,
+      isPaused: false,
+    });
+  }, []);
+  
+  const pauseProgress = useCallback(() => {
+    setProgressTracking(prev => ({ ...prev, isPaused: true }));
+    onPauseQueue?.();
+  }, [onPauseQueue]);
+  
+  const resumeProgress = useCallback(() => {
+    setProgressTracking(prev => ({ ...prev, isPaused: false }));
+    onResumeQueue?.();
+  }, [onResumeQueue]);
+  
+  const cancelProgress = useCallback(() => {
+    setProgressTracking({
+      isActive: false,
+      operationLabel: '',
+      startTime: null,
+      isPaused: false,
+    });
+    onCancelQueue?.();
+  }, [onCancelQueue]);
+  
+  // Notification actions
+  const addNotification = useCallback((notification: Omit<ProgressNotification, 'id' | 'timestamp'>) => {
+    const newNotification: ProgressNotification = {
+      ...notification,
+      id: `notification_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      timestamp: new Date().toISOString(),
+    };
+    setNotifications(prev => [newNotification, ...prev].slice(0, 10)); // Keep max 10 notifications
+  }, []);
+  
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+  
+  const clearAllNotifications = useCallback(() => {
+    setNotifications([]);
+  }, []);
 
   // Context value
   const value: DashboardContextValue = {
@@ -524,6 +641,10 @@ export function DashboardProvider({
     selectedSkill,
     selectedProject,
     selectedMarketProfile,
+    
+    // Progress tracking state (Requirements: 4.3, 4.4)
+    progressTracking,
+    notifications,
     
     // Workflow action loading states
     isIndexingNotes,
@@ -557,6 +678,16 @@ export function DashboardProvider({
     
     // Action plan actions
     setActivePlan,
+    
+    // Progress tracking actions (Requirements: 4.3, 4.4)
+    startProgressTracking,
+    stopProgressTracking,
+    pauseProgress,
+    resumeProgress,
+    cancelProgress,
+    addNotification,
+    dismissNotification,
+    clearAllNotifications,
   };
 
   return (

@@ -369,7 +369,10 @@
   - Add "Set as Active Plan" button
   - _Requirements: 9.5, 10.5_
 
-- [ ] 21. Implement command registry
+- [-] 21. Implement command registry
+
+
+
   - Register "CareerOS: Cold Start Indexing" command
   - Register "CareerOS: Extract JD Cards from Current Note" command
   - Register "CareerOS: Build Self Profile" command

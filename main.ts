@@ -1,5 +1,14 @@
 import { Plugin, TFile, Notice, WorkspaceLeaf } from 'obsidian';
-import { CareerOSSettings, QueueStatus, SelfProfile, MarketProfile, ErrorLogSummary } from './types';
+import { 
+  CareerOSSettings, 
+  QueueStatus, 
+  SelfProfile, 
+  MarketProfile, 
+  ErrorLogSummary,
+  MarketProfileSummary,
+  GapAnalysisSummary,
+  ActionPlanSummary
+} from './types';
 import { parseErrorLog, generateErrorSummary } from './utils/errorLogParser';
 import { CareerOSSettingsSchema, CURRENT_SCHEMA_VERSION } from './schema';
 import { ProfileEngine, createProfileEngine } from './ProfileEngine';
@@ -461,10 +470,10 @@ export default class CareerOSPlugin extends Plugin {
   }
 
   registerCommands() {
-    // Cold Start Indexing
+    // CareerOS: Cold Start Indexing
     this.addCommand({
       id: 'cold-start-indexing',
-      name: 'Cold Start Indexing',
+      name: 'CareerOS: Cold Start Indexing',
       callback: async () => {
         await this.runColdStartIndexing();
       },
@@ -473,7 +482,7 @@ export default class CareerOSPlugin extends Plugin {
     // Pause Indexing
     this.addCommand({
       id: 'pause-indexing',
-      name: 'Pause Indexing',
+      name: 'CareerOS: Pause Indexing',
       callback: () => {
         if (this.profileEngine?.isIndexingRunning()) {
           this.profileEngine.pauseIndexing();
@@ -487,7 +496,7 @@ export default class CareerOSPlugin extends Plugin {
     // Resume Indexing
     this.addCommand({
       id: 'resume-indexing',
-      name: 'Resume Indexing',
+      name: 'CareerOS: Resume Indexing',
       callback: () => {
         if (this.profileEngine?.isIndexingPaused()) {
           this.profileEngine.resumeIndexing();
@@ -501,7 +510,7 @@ export default class CareerOSPlugin extends Plugin {
     // Cancel Indexing
     this.addCommand({
       id: 'cancel-indexing',
-      name: 'Cancel Indexing',
+      name: 'CareerOS: Cancel Indexing',
       callback: () => {
         if (this.profileEngine?.isIndexingRunning() || this.profileEngine?.isIndexingPaused()) {
           this.profileEngine.cancelIndexing();
@@ -512,72 +521,66 @@ export default class CareerOSPlugin extends Plugin {
       },
     });
 
-    // Extract JD Cards
+    // CareerOS: Extract JD Cards from Current Note
     this.addCommand({
       id: 'extract-jd-cards',
-      name: 'Extract JD Cards from Current Note',
-      callback: () => {
-        console.log('Extract JD Cards command triggered');
-        // TODO: Implement JD card extraction
+      name: 'CareerOS: Extract JD Cards from Current Note',
+      callback: async () => {
+        await this.extractJDsFromCurrentNote();
       },
     });
 
-    // Build Self Profile
+    // CareerOS: Build Self Profile
     this.addCommand({
       id: 'build-self-profile',
-      name: 'Build Self Profile',
-      callback: () => {
-        console.log('Build Self Profile command triggered');
-        // TODO: Implement self profile building
+      name: 'CareerOS: Build Self Profile',
+      callback: async () => {
+        await this.refreshSelfProfile();
       },
     });
 
-    // Build Market Profile
+    // CareerOS: Build Market Profile
     this.addCommand({
       id: 'build-market-profile',
-      name: 'Build Market Profile',
-      callback: () => {
-        console.log('Build Market Profile command triggered');
-        // TODO: Implement market profile building
+      name: 'CareerOS: Build Market Profile',
+      callback: async () => {
+        await this.promptAndBuildMarketProfile();
       },
     });
 
-    // Generate Gap Analysis
+    // CareerOS: Generate Gap Analysis
     this.addCommand({
       id: 'generate-gap-analysis',
-      name: 'Generate Gap Analysis',
-      callback: () => {
-        console.log('Generate Gap Analysis command triggered');
-        // TODO: Implement gap analysis
+      name: 'CareerOS: Generate Gap Analysis',
+      callback: async () => {
+        await this.runGapAnalysis();
       },
     });
 
-    // Generate Action Plan
+    // CareerOS: Generate Action Plan
     this.addCommand({
       id: 'generate-action-plan',
-      name: 'Generate Action Plan',
-      callback: () => {
-        console.log('Generate Action Plan command triggered');
-        // TODO: Implement action plan generation
+      name: 'CareerOS: Generate Action Plan',
+      callback: async () => {
+        await this.generateActionPlan();
       },
     });
 
-    // Open Dashboard
+    // CareerOS: Open Dashboard
     this.addCommand({
       id: 'open-dashboard',
-      name: 'Open Dashboard',
+      name: 'CareerOS: Open Dashboard',
       callback: () => {
         this.activateDashboardView();
       },
     });
 
-    // View Error Log
+    // CareerOS: View Error Log
     this.addCommand({
       id: 'view-error-log',
-      name: 'View Error Log',
-      callback: () => {
-        console.log('View Error Log command triggered');
-        // TODO: Implement error log viewer
+      name: 'CareerOS: View Error Log',
+      callback: async () => {
+        await this.openErrorLog();
       },
     });
   }
@@ -877,6 +880,143 @@ export default class CareerOSPlugin extends Plugin {
     } catch (error) {
       console.error('Failed to check action plans:', error);
       return false;
+    }
+  }
+  
+  /**
+   * Prompt user for role and location, then build market profile
+   * 
+   * Command: CareerOS: Build Market Profile
+   */
+  private async promptAndBuildMarketProfile(): Promise<void> {
+    // Use a simple prompt modal to get role and location
+    // For now, use default values - in a full implementation, 
+    // this would show a modal dialog
+    const role = 'Python 后端';
+    const location = '杭州';
+    
+    new Notice(`Building market profile for ${role} in ${location}...`);
+    
+    try {
+      await this.buildMarketProfile(role, location);
+    } catch (error) {
+      // Error already handled in buildMarketProfile
+    }
+  }
+  
+  /**
+   * Run gap analysis between self profile and market profile
+   * 
+   * Command: CareerOS: Generate Gap Analysis
+   * Requirements: 9.1, 9.2, 9.3, 9.4
+   */
+  private async runGapAnalysis(): Promise<void> {
+    new Notice('Running gap analysis...');
+    
+    try {
+      const { createStrategyCore } = await import('./StrategyCore');
+      
+      if (!this.llmClient || !this.indexStore || !this.promptStore) {
+        throw new Error('Required services not initialized');
+      }
+      
+      const strategyCore = createStrategyCore(
+        this.app,
+        this.settings,
+        this.llmClient,
+        this.indexStore,
+        this.promptStore,
+        this.pluginDataDir
+      );
+      
+      // Load self profile
+      const selfProfile = await this.indexStore.readSelfProfile();
+      if (!selfProfile) {
+        new Notice('No self profile found. Please run "Build Self Profile" first.');
+        return;
+      }
+      
+      // Load market profiles
+      const marketProfiles = await this.indexStore.listMarketProfiles();
+      if (marketProfiles.length === 0) {
+        new Notice('No market profile found. Please run "Build Market Profile" first.');
+        return;
+      }
+      
+      // Use the first market profile
+      const marketProfile = await this.indexStore.readMarketProfile(
+        marketProfiles[0].role,
+        marketProfiles[0].location
+      );
+      
+      if (!marketProfile) {
+        throw new Error('Failed to load market profile');
+      }
+      
+      // Run gap analysis
+      const result = await strategyCore.analyzeGap(selfProfile, marketProfile);
+      
+      if (!result.success || !result.gapAnalysis) {
+        new Notice(`Gap analysis failed: ${result.error}`);
+        return;
+      }
+      
+      new Notice(`Gap analysis complete! Match: ${result.gapAnalysis.matchPercentage}%, ${result.gapAnalysis.gaps.length} gaps identified`);
+      
+      // Open the generated report
+      if (result.gapAnalysis.reportPath) {
+        const file = this.app.vault.getAbstractFileByPath(result.gapAnalysis.reportPath);
+        if (file && file instanceof TFile) {
+          await this.app.workspace.getLeaf().openFile(file);
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      new Notice(`Gap analysis failed: ${errorMessage}`);
+      console.error('Gap analysis error:', error);
+    }
+  }
+  
+  /**
+   * Open the error log file
+   * 
+   * Command: CareerOS: View Error Log
+   * Requirements: 11.3
+   */
+  private async openErrorLog(): Promise<void> {
+    try {
+      const errorLogPath = `${this.pluginDataDir}/error_log.md`;
+      let file = this.app.vault.getAbstractFileByPath(errorLogPath);
+      
+      if (!file) {
+        // Create empty error log if it doesn't exist
+        const parentPath = errorLogPath.split('/').slice(0, -1).join('/');
+        const parentDir = this.app.vault.getAbstractFileByPath(parentPath);
+        if (!parentDir) {
+          await this.app.vault.createFolder(parentPath);
+        }
+        
+        const initialContent = `# CareerOS Error Log
+
+> This file contains errors encountered during CareerOS operations.
+
+---
+
+`;
+        await this.app.vault.create(errorLogPath, initialContent);
+        file = this.app.vault.getAbstractFileByPath(errorLogPath);
+      }
+      
+      if (file && file instanceof TFile) {
+        await this.app.workspace.getLeaf().openFile(file);
+        new Notice('Error log opened');
+      } else {
+        new Notice('Could not open error log');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to open error log: ${errorMessage}`);
+      console.error('Failed to open error log:', error);
     }
   }
   

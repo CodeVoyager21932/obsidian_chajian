@@ -16,6 +16,24 @@ import { cleanJSON, cleanAndParseJSON, isValidJSON } from './jsonCleaner';
 import { NoteCardSchema, JDCardSchema, CURRENT_SCHEMA_VERSION } from '../schema';
 import { z } from 'zod';
 
+/**
+ * Helper function to check if a value contains -0 (negative zero).
+ * JSON.stringify converts -0 to "0", so round-trip tests fail for values containing -0.
+ * This is expected JSON behavior, not a bug in our code.
+ */
+function containsNegativeZero(value: unknown): boolean {
+  if (typeof value === 'number') {
+    return Object.is(value, -0);
+  }
+  if (Array.isArray(value)) {
+    return value.some(containsNegativeZero);
+  }
+  if (typeof value === 'object' && value !== null) {
+    return Object.values(value).some(containsNegativeZero);
+  }
+  return false;
+}
+
 describe('Property 14: JSON cleaning and validation', () => {
   
   /**
@@ -35,6 +53,11 @@ describe('Property 14: JSON cleaning and validation', () => {
         (jsonValue) => {
           // Skip primitive values, only test objects and arrays
           if (typeof jsonValue !== 'object' || jsonValue === null) {
+            return true;
+          }
+          
+          // Skip values containing -0 (negative zero) as JSON.stringify converts -0 to "0"
+          if (containsNegativeZero(jsonValue)) {
             return true;
           }
           
@@ -68,6 +91,12 @@ describe('Property 14: JSON cleaning and validation', () => {
             return true;
           }
           
+          // Skip values containing -0 (negative zero) as JSON.stringify converts -0 to "0"
+          // This is expected JSON behavior per the JSON specification
+          if (containsNegativeZero(jsonValue)) {
+            return true;
+          }
+          
           const jsonString = JSON.stringify(jsonValue, null, 2);
           const wrapped = `${prefix}${jsonString}${suffix}`;
           
@@ -96,6 +125,11 @@ describe('Property 14: JSON cleaning and validation', () => {
         (jsonValue, prefixText, suffixText) => {
           // Skip primitive values, only test objects and arrays
           if (typeof jsonValue !== 'object' || jsonValue === null) {
+            return true;
+          }
+          
+          // Skip values containing -0 (negative zero) as JSON.stringify converts -0 to "0"
+          if (containsNegativeZero(jsonValue)) {
             return true;
           }
           
@@ -316,6 +350,11 @@ describe('Property 14: JSON cleaning and validation', () => {
         (jsonValue) => {
           // Skip primitive values, only test objects and arrays
           if (typeof jsonValue !== 'object' || jsonValue === null) {
+            return true;
+          }
+          
+          // Skip values containing -0 (negative zero) as JSON.stringify converts -0 to "0"
+          if (containsNegativeZero(jsonValue)) {
             return true;
           }
           

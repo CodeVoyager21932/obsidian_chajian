@@ -12,7 +12,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { SelfProfile, MarketProfile, QueueStatus, SkillProfile, ProjectSummary, ErrorLogSummary } from '../types';
+import { SelfProfile, MarketProfile, QueueStatus, SkillProfile, ProjectSummary, ErrorLogSummary, MarketProfileSummary, GapAnalysisSummary, ActionPlanSummary } from '../types';
 
 // ============================================================================
 // Types
@@ -34,6 +34,10 @@ export interface DashboardState {
   // Data
   selfProfile: SelfProfile | null;
   marketProfiles: MarketProfile[];
+  marketProfileSummaries: MarketProfileSummary[];
+  gapAnalyses: GapAnalysisSummary[];
+  actionPlans: ActionPlanSummary[];
+  activePlanPath: string | null;
   errorCount: number;
   
   // Error log data
@@ -44,6 +48,7 @@ export interface DashboardState {
   isLoading: boolean;
   isRefreshing: boolean;
   isLoadingErrorLog: boolean;
+  isBuildingMarketProfile: boolean;
   
   // Workflow status
   workflowStatus: WorkflowStatus;
@@ -57,6 +62,7 @@ export interface DashboardState {
   // Detail view states
   selectedSkill: SkillProfile | null;
   selectedProject: ProjectSummary | null;
+  selectedMarketProfile: MarketProfileSummary | null;
 }
 
 export interface DashboardActions {
@@ -85,11 +91,18 @@ export interface DashboardActions {
   // Detail view actions
   selectSkill: (skill: SkillProfile | null) => void;
   selectProject: (project: ProjectSummary | null) => void;
+  selectMarketProfile: (profile: MarketProfileSummary | null) => void;
   
   // Workflow actions
   indexNotes: () => Promise<void>;
   extractJDs: () => Promise<void>;
   generatePlan: () => Promise<void>;
+  
+  // Market profile actions
+  buildMarketProfile: (role: string, location: string) => Promise<void>;
+  
+  // Action plan actions
+  setActivePlan: (planPath: string) => Promise<void>;
   
   // Workflow action loading states
   isIndexingNotes: boolean;
@@ -103,7 +116,9 @@ export interface WorkflowActionStates {
   isGeneratingPlan: boolean;
 }
 
-export interface DashboardContextValue extends DashboardState, Omit<DashboardActions, 'isIndexingNotes' | 'isExtractingJDs' | 'isGeneratingPlan'>, WorkflowActionStates {}
+export interface DashboardContextValue extends DashboardState, Omit<DashboardActions, 'isIndexingNotes' | 'isExtractingJDs' | 'isGeneratingPlan'>, WorkflowActionStates {
+  isBuildingMarketProfile: boolean;
+}
 
 // ============================================================================
 // Context
@@ -121,6 +136,9 @@ export interface DashboardProviderProps {
   // Callbacks to interact with plugin services
   onLoadSelfProfile: () => Promise<SelfProfile | null>;
   onLoadMarketProfiles: () => Promise<MarketProfile[]>;
+  onLoadMarketProfileSummaries: () => Promise<MarketProfileSummary[]>;
+  onLoadGapAnalyses: () => Promise<GapAnalysisSummary[]>;
+  onLoadActionPlans: () => Promise<ActionPlanSummary[]>;
   onLoadErrorCount: () => Promise<number>;
   onLoadErrorLog: () => Promise<ErrorLogSummary | null>;
   onRefreshSelfProfile: () => Promise<SelfProfile>;
@@ -130,6 +148,13 @@ export interface DashboardProviderProps {
   onExtractJDs?: () => Promise<void>;
   onGeneratePlan?: () => Promise<void>;
   onCheckActionPlans?: () => Promise<boolean>;
+  
+  // Market profile callbacks
+  onBuildMarketProfile?: (role: string, location: string) => Promise<void>;
+  
+  // Action plan callbacks
+  onSetActivePlan?: (planPath: string) => Promise<void>;
+  onLoadActivePlan?: () => Promise<string | null>;
 }
 
 // ============================================================================
@@ -140,6 +165,9 @@ export function DashboardProvider({
   children,
   onLoadSelfProfile,
   onLoadMarketProfiles,
+  onLoadMarketProfileSummaries,
+  onLoadGapAnalyses,
+  onLoadActionPlans,
   onLoadErrorCount,
   onLoadErrorLog,
   onRefreshSelfProfile,
@@ -147,16 +175,24 @@ export function DashboardProvider({
   onExtractJDs,
   onGeneratePlan,
   onCheckActionPlans,
+  onBuildMarketProfile,
+  onSetActivePlan,
+  onLoadActivePlan,
 }: DashboardProviderProps): JSX.Element {
   // State
   const [selfProfile, setSelfProfile] = useState<SelfProfile | null>(null);
   const [marketProfiles, setMarketProfiles] = useState<MarketProfile[]>([]);
+  const [marketProfileSummaries, setMarketProfileSummaries] = useState<MarketProfileSummary[]>([]);
+  const [gapAnalyses, setGapAnalyses] = useState<GapAnalysisSummary[]>([]);
+  const [actionPlans, setActionPlans] = useState<ActionPlanSummary[]>([]);
+  const [activePlanPath, setActivePlanPath] = useState<string | null>(null);
   const [errorCount, setErrorCount] = useState<number>(0);
   const [errorLogSummary, setErrorLogSummary] = useState<ErrorLogSummary | null>(null);
   const [isErrorLogModalOpen, setIsErrorLogModalOpen] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isLoadingErrorLog, setIsLoadingErrorLog] = useState<boolean>(false);
+  const [isBuildingMarketProfile, setIsBuildingMarketProfile] = useState<boolean>(false);
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [error, setError] = useState<DashboardError | null>(null);
   const [workflowStatus, setWorkflowStatusState] = useState<WorkflowStatus>({
@@ -168,6 +204,7 @@ export function DashboardProvider({
   // Detail view states
   const [selectedSkill, setSelectedSkill] = useState<SkillProfile | null>(null);
   const [selectedProject, setSelectedProject] = useState<ProjectSummary | null>(null);
+  const [selectedMarketProfile, setSelectedMarketProfile] = useState<MarketProfileSummary | null>(null);
   
   // Workflow action loading states
   const [isIndexingNotes, setIsIndexingNotes] = useState<boolean>(false);
@@ -181,9 +218,12 @@ export function DashboardProvider({
     
     try {
       // Load data in parallel
-      const [profile, profiles, errors] = await Promise.all([
+      const [profile, profiles, profileSummaries, gapAnalysisData, actionPlanData, errors] = await Promise.all([
         onLoadSelfProfile(),
         onLoadMarketProfiles(),
+        onLoadMarketProfileSummaries(),
+        onLoadGapAnalyses(),
+        onLoadActionPlans(),
         onLoadErrorCount(),
       ]);
       
@@ -197,15 +237,29 @@ export function DashboardProvider({
         }
       }
       
+      // Load active plan path
+      let activePlan: string | null = null;
+      if (onLoadActivePlan) {
+        try {
+          activePlan = await onLoadActivePlan();
+        } catch {
+          // Ignore errors loading active plan
+        }
+      }
+      
       setSelfProfile(profile);
       setMarketProfiles(profiles);
+      setMarketProfileSummaries(profileSummaries);
+      setGapAnalyses(gapAnalysisData);
+      setActionPlans(actionPlanData);
+      setActivePlanPath(activePlan);
       setErrorCount(errors);
       
       // Update workflow status based on loaded data
       setWorkflowStatusState({
         selfProfileComplete: profile !== null,
-        marketProfileComplete: profiles.length > 0,
-        actionPlanComplete: hasActionPlans,
+        marketProfileComplete: profiles.length > 0 || profileSummaries.length > 0,
+        actionPlanComplete: hasActionPlans || actionPlanData.length > 0,
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -217,7 +271,7 @@ export function DashboardProvider({
     } finally {
       setIsLoading(false);
     }
-  }, [onLoadSelfProfile, onLoadMarketProfiles, onLoadErrorCount, onCheckActionPlans]);
+  }, [onLoadSelfProfile, onLoadMarketProfiles, onLoadMarketProfileSummaries, onLoadGapAnalyses, onLoadActionPlans, onLoadErrorCount, onCheckActionPlans, onLoadActivePlan]);
 
   // Refresh self profile (rebuild from NoteCards)
   const refreshSelfProfile = useCallback(async () => {
@@ -293,6 +347,10 @@ export function DashboardProvider({
   
   const selectProject = useCallback((project: ProjectSummary | null) => {
     setSelectedProject(project);
+  }, []);
+  
+  const selectMarketProfile = useCallback((profile: MarketProfileSummary | null) => {
+    setSelectedMarketProfile(profile);
   }, []);
   
   // Workflow action: Index Notes
@@ -384,23 +442,88 @@ export function DashboardProvider({
       setIsGeneratingPlan(false);
     }
   }, [onGeneratePlan, loadDashboardData]);
+  
+  // Market profile action: Build Market Profile
+  const buildMarketProfile = useCallback(async (role: string, location: string) => {
+    if (!onBuildMarketProfile) {
+      setError({
+        message: 'Build Market Profile action not available',
+        timestamp: new Date().toISOString(),
+        type: 'action',
+      });
+      return;
+    }
+    
+    setIsBuildingMarketProfile(true);
+    setError(null);
+    
+    try {
+      await onBuildMarketProfile(role, location);
+      // Reload data after building market profile
+      await loadDashboardData();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError({
+        message: `Failed to build market profile: ${errorMessage}`,
+        timestamp: new Date().toISOString(),
+        type: 'action',
+      });
+    } finally {
+      setIsBuildingMarketProfile(false);
+    }
+  }, [onBuildMarketProfile, loadDashboardData]);
+  
+  // Action plan action: Set Active Plan
+  const setActivePlan = useCallback(async (planPath: string) => {
+    if (!onSetActivePlan) {
+      setError({
+        message: 'Set Active Plan action not available',
+        timestamp: new Date().toISOString(),
+        type: 'action',
+      });
+      return;
+    }
+    
+    try {
+      await onSetActivePlan(planPath);
+      setActivePlanPath(planPath);
+      // Update action plans to reflect active status
+      setActionPlans(prev => prev.map(plan => ({
+        ...plan,
+        isActive: plan.planPath === planPath,
+      })));
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError({
+        message: `Failed to set active plan: ${errorMessage}`,
+        timestamp: new Date().toISOString(),
+        type: 'action',
+      });
+    }
+  }, [onSetActivePlan]);
 
   // Context value
   const value: DashboardContextValue = {
     // State
     selfProfile,
     marketProfiles,
+    marketProfileSummaries,
+    gapAnalyses,
+    actionPlans,
+    activePlanPath,
     errorCount,
     errorLogSummary,
     isErrorLogModalOpen,
     isLoading,
     isRefreshing,
     isLoadingErrorLog,
+    isBuildingMarketProfile,
     workflowStatus,
     queueStatus,
     error,
     selectedSkill,
     selectedProject,
+    selectedMarketProfile,
     
     // Workflow action loading states
     isIndexingNotes,
@@ -422,11 +545,18 @@ export function DashboardProvider({
     clearError,
     selectSkill,
     selectProject,
+    selectMarketProfile,
     
     // Workflow actions
     indexNotes,
     extractJDs,
     generatePlan,
+    
+    // Market profile actions
+    buildMarketProfile,
+    
+    // Action plan actions
+    setActivePlan,
   };
 
   return (

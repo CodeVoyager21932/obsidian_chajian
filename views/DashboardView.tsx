@@ -13,7 +13,7 @@
 import React, { useEffect } from 'react';
 import { ItemView, WorkspaceLeaf } from 'obsidian';
 import { createRoot, Root } from 'react-dom/client';
-import { SelfProfile, MarketProfile, SkillProfile, ProjectSummary, TechItem, ErrorLogSummary, ErrorLogEntry, ErrorType } from '../types';
+import { SelfProfile, MarketProfile, SkillProfile, ProjectSummary, TechItem, ErrorLogSummary, ErrorLogEntry, ErrorType, MarketProfileSummary, GapAnalysisSummary, ActionPlanSummary } from '../types';
 import { DashboardProvider, useDashboard } from './DashboardContext';
 import { getErrorTypeLabel, getErrorTypeIcon } from '../utils/errorLogParser';
 
@@ -778,6 +778,364 @@ function formatTimestamp(timestamp: string): string {
 }
 
 // ============================================================================
+// Market Profiles Section
+// Requirements: 9.5, 20
+// ============================================================================
+
+/**
+ * Market profiles section - displays available market profiles
+ * Requirements: 9.5 - Display list of recent analyses in dashboard
+ */
+function MarketProfilesSection(): JSX.Element {
+  const { 
+    marketProfileSummaries, 
+    selectedMarketProfile, 
+    selectMarketProfile,
+    buildMarketProfile,
+    isBuildingMarketProfile,
+  } = useDashboard();
+  
+  const [showBuildModal, setShowBuildModal] = React.useState(false);
+  
+  return (
+    <div className="career-os-section career-os-market-section">
+      <div className="career-os-section-header">
+        <h3>📊 Market Profiles</h3>
+        <button
+          className="career-os-add-btn"
+          onClick={() => setShowBuildModal(true)}
+          disabled={isBuildingMarketProfile}
+          title="Build new market profile"
+        >
+          {isBuildingMarketProfile ? '⟳' : '+'} New
+        </button>
+      </div>
+      
+      {marketProfileSummaries.length === 0 ? (
+        <div className="career-os-empty-state">
+          <p>No market profiles yet.</p>
+          <p className="career-os-hint">Extract JDs and build a market profile to see market demands.</p>
+        </div>
+      ) : (
+        <div className="career-os-market-list">
+          {marketProfileSummaries.map((profile) => (
+            <MarketProfileItem
+              key={`${profile.role}-${profile.location}`}
+              profile={profile}
+              isSelected={selectedMarketProfile?.role === profile.role && selectedMarketProfile?.location === profile.location}
+              onSelect={() => selectMarketProfile(
+                selectedMarketProfile?.role === profile.role && selectedMarketProfile?.location === profile.location 
+                  ? null 
+                  : profile
+              )}
+            />
+          ))}
+        </div>
+      )}
+      
+      {/* Build Market Profile Modal */}
+      {showBuildModal && (
+        <BuildMarketProfileModal
+          onClose={() => setShowBuildModal(false)}
+          onBuild={buildMarketProfile}
+          isBuilding={isBuildingMarketProfile}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Single market profile item
+ */
+interface MarketProfileItemProps {
+  profile: MarketProfileSummary;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+function MarketProfileItem({ profile, isSelected, onSelect }: MarketProfileItemProps): JSX.Element {
+  const formattedDate = formatDate(profile.lastBuilt);
+  
+  return (
+    <div 
+      className={`career-os-market-item ${isSelected ? 'selected' : ''}`}
+      onClick={onSelect}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onSelect()}
+    >
+      <div className="career-os-market-item-header">
+        <span className="career-os-market-role">{profile.role}</span>
+        <span className="career-os-market-location">📍 {profile.location}</span>
+      </div>
+      <div className="career-os-market-item-meta">
+        <span className="career-os-market-jd-count">{profile.jdCount} JDs</span>
+        <span className="career-os-market-date">{formattedDate}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Build Market Profile Modal
+ */
+interface BuildMarketProfileModalProps {
+  onClose: () => void;
+  onBuild: (role: string, location: string) => Promise<void>;
+  isBuilding: boolean;
+}
+
+function BuildMarketProfileModal({ onClose, onBuild, isBuilding }: BuildMarketProfileModalProps): JSX.Element {
+  const [role, setRole] = React.useState('');
+  const [location, setLocation] = React.useState('');
+  
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (role.trim() && location.trim()) {
+      await onBuild(role.trim(), location.trim());
+      onClose();
+    }
+  };
+  
+  // Close on escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+  
+  return (
+    <div className="career-os-modal-overlay" onClick={onClose}>
+      <div className="career-os-modal career-os-build-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="career-os-modal-header">
+          <h3>📊 Build Market Profile</h3>
+          <button className="career-os-modal-close" onClick={onClose}>×</button>
+        </div>
+        
+        <form className="career-os-modal-content" onSubmit={handleSubmit}>
+          <div className="career-os-form-group">
+            <label htmlFor="market-role">Target Role</label>
+            <input
+              id="market-role"
+              type="text"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              placeholder="e.g., Python 后端"
+              disabled={isBuilding}
+              autoFocus
+            />
+          </div>
+          
+          <div className="career-os-form-group">
+            <label htmlFor="market-location">Location</label>
+            <input
+              id="market-location"
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g., 杭州"
+              disabled={isBuilding}
+            />
+          </div>
+          
+          <div className="career-os-form-actions">
+            <button
+              type="button"
+              className="career-os-btn-secondary"
+              onClick={onClose}
+              disabled={isBuilding}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="career-os-btn-primary"
+              disabled={isBuilding || !role.trim() || !location.trim()}
+            >
+              {isBuilding ? (
+                <>
+                  <span className="career-os-btn-spinner"></span>
+                  Building...
+                </>
+              ) : (
+                'Build Profile'
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Gap Analyses and Action Plans Section
+// Requirements: 9.5, 10.5, 20
+// ============================================================================
+
+/**
+ * Plans section - displays gap analyses and action plans
+ * Requirements: 9.5, 10.5
+ */
+function PlansSection(): JSX.Element {
+  const { 
+    gapAnalyses, 
+    actionPlans, 
+    activePlanPath,
+    setActivePlan,
+  } = useDashboard();
+  
+  const hasContent = gapAnalyses.length > 0 || actionPlans.length > 0;
+  
+  return (
+    <div className="career-os-section career-os-plans-section">
+      <h3>📋 Gap Analyses & Plans</h3>
+      
+      {!hasContent ? (
+        <div className="career-os-empty-state">
+          <p>No analyses or plans yet.</p>
+          <p className="career-os-hint">Complete the workflow to generate gap analysis and action plans.</p>
+        </div>
+      ) : (
+        <div className="career-os-plans-content">
+          {/* Gap Analyses */}
+          {gapAnalyses.length > 0 && (
+            <div className="career-os-gap-analyses">
+              <h4>🔍 Gap Analyses</h4>
+              <div className="career-os-gap-list">
+                {gapAnalyses.slice(0, 5).map((analysis) => (
+                  <GapAnalysisItem key={analysis.reportPath} analysis={analysis} />
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Action Plans */}
+          {actionPlans.length > 0 && (
+            <div className="career-os-action-plans">
+              <h4>📝 Action Plans</h4>
+              <div className="career-os-plan-list">
+                {actionPlans.slice(0, 5).map((plan) => (
+                  <ActionPlanItem 
+                    key={plan.planPath} 
+                    plan={plan}
+                    isActive={plan.planPath === activePlanPath || plan.isActive === true}
+                    onSetActive={() => setActivePlan(plan.planPath)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Gap analysis item
+ */
+function GapAnalysisItem({ analysis }: { analysis: GapAnalysisSummary }): JSX.Element {
+  const formattedDate = formatDate(analysis.generatedAt);
+  const matchColor = getMatchColor(analysis.matchPercentage);
+  
+  return (
+    <div className="career-os-gap-item">
+      <div className="career-os-gap-item-header">
+        <span className="career-os-gap-role">{analysis.targetRole}</span>
+        <span className="career-os-gap-location">📍 {analysis.targetLocation}</span>
+      </div>
+      <div className="career-os-gap-item-stats">
+        <span 
+          className="career-os-gap-match" 
+          style={{ color: matchColor }}
+          title="Match percentage"
+        >
+          {analysis.matchPercentage}% match
+        </span>
+        <span className="career-os-gap-strengths" title="Strengths identified">
+          ✓ {analysis.strengthsCount}
+        </span>
+        <span className="career-os-gap-gaps" title="Gaps identified">
+          ⚠ {analysis.gapsCount}
+        </span>
+      </div>
+      <div className="career-os-gap-item-date">{formattedDate}</div>
+    </div>
+  );
+}
+
+/**
+ * Action plan item with "Set as Active" button
+ * Requirements: 10.5
+ */
+interface ActionPlanItemProps {
+  plan: ActionPlanSummary;
+  isActive: boolean;
+  onSetActive: () => void;
+}
+
+function ActionPlanItem({ plan, isActive, onSetActive }: ActionPlanItemProps): JSX.Element {
+  const formattedDate = formatDate(plan.generatedAt);
+  
+  return (
+    <div className={`career-os-plan-item ${isActive ? 'active' : ''}`}>
+      <div className="career-os-plan-item-header">
+        <span className="career-os-plan-role">{plan.role}</span>
+        {isActive && <span className="career-os-plan-active-badge">Active</span>}
+      </div>
+      <div className="career-os-plan-item-meta">
+        <span className="career-os-plan-location">📍 {plan.location}</span>
+        <span className="career-os-plan-period">📅 {plan.period}</span>
+        <span className="career-os-plan-hours">⏱️ {plan.weeklyHours}h/week</span>
+      </div>
+      <div className="career-os-plan-item-footer">
+        <span className="career-os-plan-date">{formattedDate}</span>
+        {!isActive && (
+          <button
+            className="career-os-set-active-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSetActive();
+            }}
+            title="Set as active plan"
+          >
+            Set Active
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Get color based on match percentage
+ */
+function getMatchColor(percentage: number): string {
+  if (percentage >= 80) return 'var(--text-success)';
+  if (percentage >= 60) return 'var(--text-accent)';
+  if (percentage >= 40) return 'var(--text-warning, #f59e0b)';
+  return 'var(--text-error)';
+}
+
+/**
+ * Format date for display
+ */
+function formatDate(dateStr: string): string {
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString();
+  } catch {
+    return dateStr;
+  }
+}
+
+// ============================================================================
 // Main Dashboard Component
 // ============================================================================
 
@@ -805,6 +1163,8 @@ function DashboardContent(): JSX.Element {
         <div className="career-os-main-column">
           <SkillsSection />
           <ProjectsSection />
+          <MarketProfilesSection />
+          <PlansSection />
         </div>
         
         <div className="career-os-side-column">
@@ -823,6 +1183,9 @@ function DashboardContent(): JSX.Element {
 export interface DashboardAppProps {
   onLoadSelfProfile: () => Promise<SelfProfile | null>;
   onLoadMarketProfiles: () => Promise<MarketProfile[]>;
+  onLoadMarketProfileSummaries: () => Promise<MarketProfileSummary[]>;
+  onLoadGapAnalyses: () => Promise<GapAnalysisSummary[]>;
+  onLoadActionPlans: () => Promise<ActionPlanSummary[]>;
   onLoadErrorCount: () => Promise<number>;
   onLoadErrorLog: () => Promise<ErrorLogSummary | null>;
   onRefreshSelfProfile: () => Promise<SelfProfile>;
@@ -832,6 +1195,13 @@ export interface DashboardAppProps {
   onExtractJDs?: () => Promise<void>;
   onGeneratePlan?: () => Promise<void>;
   onCheckActionPlans?: () => Promise<boolean>;
+  
+  // Market profile callbacks
+  onBuildMarketProfile?: (role: string, location: string) => Promise<void>;
+  
+  // Action plan callbacks
+  onSetActivePlan?: (planPath: string) => Promise<void>;
+  onLoadActivePlan?: () => Promise<string | null>;
 }
 
 /**

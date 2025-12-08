@@ -274,6 +274,34 @@ export interface MarketProfileSummary {
 }
 
 // ============================================================================
+// Gap Analysis Summary Types
+// ============================================================================
+
+export interface GapAnalysisSummary {
+  targetRole: string;
+  targetLocation: string;
+  matchPercentage: number;
+  strengthsCount: number;
+  gapsCount: number;
+  generatedAt: string;
+  reportPath: string;
+}
+
+// ============================================================================
+// Action Plan Summary Types
+// ============================================================================
+
+export interface ActionPlanSummary {
+  role: string;
+  location: string;
+  period: string;
+  weeklyHours: number;
+  generatedAt: string;
+  planPath: string;
+  isActive?: boolean;
+}
+
+// ============================================================================
 // Error Log Types
 // ============================================================================
 

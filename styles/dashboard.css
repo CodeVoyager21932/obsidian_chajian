@@ -896,3 +896,487 @@
   font-size: 0.8em;
   color: var(--text-muted);
 }
+
+
+/* ============================================================================
+   Guided Workflow Section (Enhanced)
+   Requirements: 11.5
+   ============================================================================ */
+
+/* Current Step Guidance */
+.career-os-current-step-guidance {
+  background: linear-gradient(135deg, var(--interactive-accent) 0%, var(--interactive-accent-hover) 100%);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  color: var(--text-on-accent);
+}
+
+.career-os-guidance-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.career-os-guidance-icon {
+  font-size: 1.2em;
+}
+
+.career-os-guidance-title {
+  font-weight: 600;
+  font-size: 0.95em;
+}
+
+.career-os-guidance-text {
+  margin: 0;
+  font-size: 0.85em;
+  line-height: 1.5;
+  opacity: 0.95;
+}
+
+/* Workflow Complete Message */
+.career-os-workflow-complete {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: var(--background-modifier-success);
+  border-radius: 8px;
+  color: var(--text-success);
+}
+
+.career-os-complete-icon {
+  font-size: 1.3em;
+}
+
+.career-os-workflow-complete p {
+  margin: 0;
+  font-size: 0.9em;
+}
+
+/* Current Step Highlight */
+.career-os-workflow-step.current {
+  border-color: var(--interactive-accent);
+  background: var(--background-secondary-alt);
+  box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+.career-os-workflow-step.current .career-os-step-indicator {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  animation: career-os-pulse 2s ease-in-out infinite;
+}
+
+@keyframes career-os-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+/* Step Status Badge */
+.career-os-step-status-badge {
+  font-size: 0.7em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.career-os-step-status-badge.complete {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.career-os-step-status-badge.current {
+  background: var(--text-accent);
+  color: var(--text-on-accent);
+}
+
+/* Step Action Button */
+.career-os-step-action-btn {
+  margin-top: 10px;
+  padding: 6px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.8em;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.career-os-step-action-btn:hover:not(:disabled) {
+  background: var(--interactive-hover);
+  border-color: var(--interactive-accent);
+}
+
+.career-os-step-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.career-os-step-action-btn.loading {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}
+
+/* Button Spinner */
+.career-os-btn-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: career-os-spin 0.6s linear infinite;
+}
+
+/* Step Description with more space for button */
+.career-os-workflow-step .career-os-step-description {
+  margin-bottom: 0;
+}
+
+
+/* ============================================================================
+   Market Profiles Section
+   Requirements: 9.5, 20
+   ============================================================================ */
+
+.career-os-market-section .career-os-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.career-os-market-section .career-os-section-header h3 {
+  margin: 0;
+}
+
+.career-os-add-btn {
+  padding: 4px 12px;
+  border-radius: 5px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.85em;
+  transition: all 0.15s ease;
+}
+
+.career-os-add-btn:hover:not(:disabled) {
+  background: var(--interactive-hover);
+  border-color: var(--interactive-accent);
+}
+
+.career-os-add-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.career-os-market-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.career-os-market-item {
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.career-os-market-item:hover {
+  border-color: var(--interactive-accent-hover);
+  background: var(--background-secondary-alt);
+}
+
+.career-os-market-item.selected {
+  border-color: var(--interactive-accent);
+  background: var(--background-secondary-alt);
+}
+
+.career-os-market-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.career-os-market-role {
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.career-os-market-location {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.career-os-market-item-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+.career-os-market-jd-count {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.9em;
+}
+
+/* ============================================================================
+   Build Market Profile Modal
+   ============================================================================ */
+
+.career-os-build-modal {
+  max-width: 400px;
+}
+
+.career-os-form-group {
+  margin-bottom: 16px;
+}
+
+.career-os-form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.9em;
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.career-os-form-group input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 0.95em;
+  transition: border-color 0.15s ease;
+}
+
+.career-os-form-group input:focus {
+  outline: none;
+  border-color: var(--interactive-accent);
+}
+
+.career-os-form-group input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.career-os-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.career-os-btn-secondary {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.9em;
+  transition: all 0.15s ease;
+}
+
+.career-os-btn-secondary:hover:not(:disabled) {
+  background: var(--interactive-hover);
+}
+
+.career-os-btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.career-os-btn-primary {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  font-size: 0.9em;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.career-os-btn-primary:hover:not(:disabled) {
+  background: var(--interactive-accent-hover);
+}
+
+.career-os-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ============================================================================
+   Plans Section (Gap Analyses & Action Plans)
+   Requirements: 9.5, 10.5, 20
+   ============================================================================ */
+
+.career-os-plans-section h3 {
+  margin-bottom: 16px;
+}
+
+.career-os-plans-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.career-os-gap-analyses h4,
+.career-os-action-plans h4 {
+  margin: 0 0 12px 0;
+  font-size: 0.95em;
+  color: var(--text-muted);
+}
+
+.career-os-gap-list,
+.career-os-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Gap Analysis Item */
+.career-os-gap-item {
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+}
+
+.career-os-gap-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.career-os-gap-role {
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.career-os-gap-location {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.career-os-gap-item-stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 0.85em;
+}
+
+.career-os-gap-match {
+  font-weight: 600;
+}
+
+.career-os-gap-strengths {
+  color: var(--text-success, #22c55e);
+}
+
+.career-os-gap-gaps {
+  color: var(--text-warning, #f59e0b);
+}
+
+.career-os-gap-item-date {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+/* Action Plan Item */
+.career-os-plan-item {
+  padding: 12px;
+  background: var(--background-primary);
+  border-radius: 6px;
+  border: 1px solid var(--background-modifier-border);
+  transition: all 0.15s ease;
+}
+
+.career-os-plan-item.active {
+  border-color: var(--interactive-accent);
+  background: var(--background-secondary-alt);
+}
+
+.career-os-plan-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.career-os-plan-role {
+  font-weight: 500;
+  color: var(--text-normal);
+}
+
+.career-os-plan-active-badge {
+  font-size: 0.7em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.career-os-plan-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.career-os-plan-item-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.career-os-plan-date {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+.career-os-set-active-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  cursor: pointer;
+  font-size: 0.8em;
+  transition: all 0.15s ease;
+}
+
+.career-os-set-active-btn:hover {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border-color: var(--interactive-accent);
+}

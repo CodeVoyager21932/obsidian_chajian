@@ -349,13 +349,19 @@
 
 
 
+
+
   - Create workflow status indicators (self-profile, market-profile, plan)
   - Show completion checkmarks for completed steps
   - Add action buttons for each step (Index Notes, Extract JDs, Generate Plan)
   - Display current step with helpful guidance text
   - _Requirements: 11.5_
 
-- [ ] 20. Implement dashboard market and plan sections
+- [x] 20. Implement dashboard market and plan sections
+
+
+
+
   - Display list of available MarketProfiles with role, location, JD count
   - Add button to build new MarketProfile
   - Display list of recent gap analyses and action plans

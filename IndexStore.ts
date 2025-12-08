@@ -393,13 +393,211 @@ export class IndexStore {
   }
 
   // ============================================================================
-  // Migration Utilities
+  // Gap Analysis and Action Plan Operations
   // ============================================================================
 
   /**
-   * Migrate all cards to current schema version
+   * List all gap analysis reports
+   * Returns summaries parsed from frontmatter
    */
-  async migrateAll(): Promise<{ migrated: number; failed: number }> {
+  async listGapAnalyses(): Promise<Array<{
+    targetRole: string;
+    targetLocation: string;
+    matchPercentage: number;
+    strengthsCount: number;
+    gapsCount: number;
+    generatedAt: string;
+    reportPath: string;
+  }>> {
+    const files = await this.fileService.listFiles(this.mappingDirectory, 'md');
+    const analyses: Array<{
+      targetRole: string;
+      targetLocation: string;
+      matchPercentage: number;
+      strengthsCount: number;
+      gapsCount: number;
+      generatedAt: string;
+      reportPath: string;
+    }> = [];
+    
+    for (const filePath of files) {
+      if (!filePath.includes('gap_analysis')) {
+        continue;
+      }
+      
+      try {
+        const content = await this.fileService.read(filePath);
+        const frontmatter = this.parseFrontmatter(content);
+        
+        if (frontmatter && frontmatter.type === 'gap_analysis') {
+          analyses.push({
+            targetRole: frontmatter.target_role || '',
+            targetLocation: frontmatter.target_location || '',
+            matchPercentage: frontmatter.match_percentage || 0,
+            strengthsCount: frontmatter.strengths_count || 0,
+            gapsCount: frontmatter.gaps_count || 0,
+            generatedAt: frontmatter.generated_at || '',
+            reportPath: filePath,
+          });
+        }
+      } catch (error) {
+        console.error(`Failed to read gap analysis: ${filePath}`, error);
+      }
+    }
+    
+    // Sort by date descending
+    return analyses.sort((a, b) => 
+      new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()
+    );
+  }
+
+  /**
+   * List all action plans
+   * Returns summaries parsed from frontmatter
+   */
+  async listActionPlans(): Promise<Array<{
+    role: string;
+    location: string;
+    period: string;
+    weeklyHours: number;
+    generatedAt: string;
+    planPath: string;
+    isActive?: boolean;
+  }>> {
+    const files = await this.fileService.listFiles(this.mappingDirectory, 'md');
+    const plans: Array<{
+      role: string;
+      location: string;
+      period: string;
+      weeklyHours: number;
+      generatedAt: string;
+      planPath: string;
+      isActive?: boolean;
+    }> = [];
+    
+    for (const filePath of files) {
+      if (!filePath.includes('action_plan')) {
+        continue;
+      }
+      
+      try {
+        const content = await this.fileService.read(filePath);
+        const frontmatter = this.parseFrontmatter(content);
+        
+        if (frontmatter && frontmatter.type === 'action_plan') {
+          plans.push({
+            role: frontmatter.role || '',
+            location: frontmatter.location || '',
+            period: frontmatter.period || '',
+            weeklyHours: frontmatter.weekly_hours || 0,
+            generatedAt: frontmatter.generated_at || '',
+            planPath: filePath,
+            isActive: frontmatter.is_active || false,
+          });
+        }
+      } catch (error) {
+        console.error(`Failed to read action plan: ${filePath}`, error);
+      }
+    }
+    
+    // Sort by date descending
+    return plans.sort((a, b) => 
+      new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime()
+    );
+  }
+
+  /**
+   * Set a plan as active
+   */
+  async setActivePlan(planPath: string): Promise<void> {
+    // First, unset all other active plans
+    const plans = await this.listActionPlans();
+    
+    for (const plan of plans) {
+      if (plan.isActive && plan.planPath !== planPath) {
+        await this.updatePlanActiveStatus(plan.planPath, false);
+      }
+    }
+    
+    // Set the specified plan as active
+    await this.updatePlanActiveStatus(planPath, true);
+  }
+
+  /**
+   * Get the currently active plan path
+   */
+  async getActivePlanPath(): Promise<string | null> {
+    const plans = await this.listActionPlans();
+    const activePlan = plans.find(p => p.isActive);
+    return activePlan?.planPath || null;
+  }
+
+  /**
+   * Update the active status of a plan in its frontmatter
+   */
+  private async updatePlanActiveStatus(planPath: string, isActive: boolean): Promise<void> {
+    try {
+      const content = await this.fileService.read(planPath);
+      
+      // Parse frontmatter
+      const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (!frontmatterMatch) {
+        return;
+      }
+      
+      let frontmatterContent = frontmatterMatch[1];
+      const restContent = content.slice(frontmatterMatch[0].length);
+      
+      // Update or add is_active field
+      if (frontmatterContent.includes('is_active:')) {
+        frontmatterContent = frontmatterContent.replace(
+          /is_active:\s*(true|false)/,
+          `is_active: ${isActive}`
+        );
+      } else {
+        frontmatterContent = frontmatterContent.trim() + `\nis_active: ${isActive}`;
+      }
+      
+      const newContent = `---\n${frontmatterContent}\n---${restContent}`;
+      await this.fileService.write(planPath, newContent);
+    } catch (error) {
+      console.error(`Failed to update plan active status: ${planPath}`, error);
+    }
+  }
+
+  /**
+   * Parse YAML frontmatter from markdown content
+   */
+  private parseFrontmatter(content: string): Record<string, any> | null {
+    const match = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!match) {
+      return null;
+    }
+    
+    const frontmatterStr = match[1];
+    const result: Record<string, any> = {};
+    
+    // Simple YAML parsing for key: value pairs
+    const lines = frontmatterStr.split('\n');
+    for (const line of lines) {
+      const colonIndex = line.indexOf(':');
+      if (colonIndex > 0) {
+        const key = line.slice(0, colonIndex).trim();
+        let value: any = line.slice(colonIndex + 1).trim();
+        
+        // Remove quotes
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        
+        // Parse numbers
+        if (!isNaN(Number(value)) && value !== '') {
+          value = Number(value);
+        }
+        
+        // Parse booleans
+        if (value === 'true') valu
     let migrated = 0;
     let failed = 0;
     

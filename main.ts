@@ -104,6 +104,9 @@ export default class CareerOSPlugin extends Plugin {
       (leaf: WorkspaceLeaf) => new DashboardItemView(leaf, {
         onLoadSelfProfile: () => this.loadSelfProfile(),
         onLoadMarketProfiles: () => this.loadMarketProfiles(),
+        onLoadMarketProfileSummaries: () => this.loadMarketProfileSummaries(),
+        onLoadGapAnalyses: () => this.loadGapAnalyses(),
+        onLoadActionPlans: () => this.loadActionPlans(),
         onLoadErrorCount: () => this.loadErrorCount(),
         onLoadErrorLog: () => this.loadErrorLog(),
         onRefreshSelfProfile: () => this.refreshSelfProfile(),
@@ -111,6 +114,9 @@ export default class CareerOSPlugin extends Plugin {
         onExtractJDs: () => this.extractJDsFromCurrentNote(),
         onGeneratePlan: () => this.generateActionPlan(),
         onCheckActionPlans: () => this.checkActionPlansExist(),
+        onBuildMarketProfile: (role, location) => this.buildMarketProfile(role, location),
+        onSetActivePlan: (planPath) => this.setActivePlan(planPath),
+        onLoadActivePlan: () => this.loadActivePlan(),
       })
     );
   }
@@ -173,6 +179,144 @@ export default class CareerOSPlugin extends Plugin {
     } catch (error) {
       console.error('Failed to load MarketProfiles:', error);
       return [];
+    }
+  }
+  
+  /**
+   * Load market profile summaries for dashboard display
+   * Requirements: 9.5, 20
+   */
+  private async loadMarketProfileSummaries(): Promise<MarketProfileSummary[]> {
+    if (!this.indexStore) {
+      console.warn('IndexStore not initialized');
+      return [];
+    }
+    
+    try {
+      const profiles = await this.indexStore.listMarketProfiles();
+      return profiles.map(profile => ({
+        role: profile.role,
+        location: profile.location,
+        jdCount: profile.sample_jd_ids.length,
+        lastBuilt: profile.last_built,
+      }));
+    } catch (error) {
+      console.error('Failed to load MarketProfileSummaries:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Load gap analysis summaries for dashboard display
+   * Requirements: 9.5, 20
+   */
+  private async loadGapAnalyses(): Promise<GapAnalysisSummary[]> {
+    if (!this.indexStore) {
+      console.warn('IndexStore not initialized');
+      return [];
+    }
+    
+    try {
+      return await this.indexStore.listGapAnalyses();
+    } catch (error) {
+      console.error('Failed to load GapAnalyses:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Load action plan summaries for dashboard display
+   * Requirements: 10.5, 20
+   */
+  private async loadActionPlans(): Promise<ActionPlanSummary[]> {
+    if (!this.indexStore) {
+      console.warn('IndexStore not initialized');
+      return [];
+    }
+    
+    try {
+      return await this.indexStore.listActionPlans();
+    } catch (error) {
+      console.error('Failed to load ActionPlans:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Build a new market profile
+   * Requirements: 9.5, 20
+   */
+  private async buildMarketProfile(role: string, location: string): Promise<void> {
+    new Notice(`Building market profile for ${role} in ${location}...`);
+    
+    try {
+      const { createMarketScanner } = await import('./MarketScanner');
+      const { Taxonomy } = await import('./Taxonomy');
+      
+      if (!this.llmClient || !this.indexStore || !this.promptStore || !this.privacyGuard) {
+        throw new Error('Required services not initialized');
+      }
+      
+      const taxonomy = new Taxonomy(this.settings.taxonomy);
+      
+      const marketScanner = createMarketScanner(
+        this.app,
+        this.settings,
+        this.llmClient,
+        this.indexStore,
+        this.promptStore,
+        this.privacyGuard,
+        taxonomy
+      );
+      
+      const result = await marketScanner.buildMarketProfile(role, location);
+      
+      if (!result.success) {
+        new Notice(`Failed to build market profile: ${result.error}`);
+        throw new Error(result.error);
+      }
+      
+      new Notice(`Market profile built successfully!`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to build market profile: ${errorMessage}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Set a plan as active
+   * Requirements: 10.5, 20
+   */
+  private async setActivePlan(planPath: string): Promise<void> {
+    if (!this.indexStore) {
+      throw new Error('IndexStore not initialized');
+    }
+    
+    try {
+      await this.indexStore.setActivePlan(planPath);
+      new Notice('Plan set as active');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      new Notice(`Failed to set active plan: ${errorMessage}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Load the currently active plan path
+   * Requirements: 10.5, 20
+   */
+  private async loadActivePlan(): Promise<string | null> {
+    if (!this.indexStore) {
+      return null;
+    }
+    
+    try {
+      return await this.indexStore.getActivePlanPath();
+    } catch (error) {
+      console.error('Failed to load active plan:', error);
+      return null;
     }
   }
   

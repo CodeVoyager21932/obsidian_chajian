@@ -341,6 +341,7 @@ export interface CareerOSSettings {
   // Proxy and Custom URLs
   proxyUrl?: string;
   customBaseUrl?: string;
+  customApiKey?: string;  // API key for custom proxy service
   
   // Retry and Timeout
   maxRetries: number;

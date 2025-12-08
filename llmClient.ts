@@ -68,17 +68,30 @@ function buildHeaders(config: LLMConfig, settings: CareerOSSettings): Record<str
     'Content-Type': 'application/json',
   };
 
+  // If custom base URL is configured with custom API key, use it
+  const useCustomKey = settings.customBaseUrl && settings.customApiKey;
+
   switch (config.provider) {
     case 'openai':
-      headers['Authorization'] = `Bearer ${config.apiKey || settings.openaiApiKey}`;
+      headers['Authorization'] = `Bearer ${useCustomKey ? settings.customApiKey : (config.apiKey || settings.openaiApiKey)}`;
       break;
     case 'anthropic':
-      headers['x-api-key'] = config.apiKey || settings.anthropicApiKey;
-      headers['anthropic-version'] = '2023-06-01';
+      if (useCustomKey) {
+        // Most proxy services use Bearer token format
+        headers['Authorization'] = `Bearer ${settings.customApiKey}`;
+      } else {
+        headers['x-api-key'] = config.apiKey || settings.anthropicApiKey;
+        headers['anthropic-version'] = '2023-06-01';
+      }
       break;
     case 'google':
-      // Google uses API key in URL or header depending on endpoint
-      headers['x-goog-api-key'] = config.apiKey || settings.googleApiKey;
+      if (useCustomKey) {
+        // Most proxy services use Bearer token format
+        headers['Authorization'] = `Bearer ${settings.customApiKey}`;
+      } else {
+        // Google uses API key in URL or header depending on endpoint
+        headers['x-goog-api-key'] = config.apiKey || settings.googleApiKey;
+      }
       break;
     case 'local':
       // Local LLMs typically don't need auth
@@ -92,12 +105,18 @@ function buildHeaders(config: LLMConfig, settings: CareerOSSettings): Record<str
  * Get the API endpoint URL for a provider
  */
 function getEndpointUrl(config: LLMConfig, settings: CareerOSSettings): string {
-  // Use custom base URL if provided
-  if (config.baseUrl) {
-    return config.baseUrl;
-  }
+  // Custom base URL has highest priority (for third-party proxy services)
   if (settings.customBaseUrl) {
     return settings.customBaseUrl;
+  }
+  
+  // Provider-specific base URL (e.g., for local LLM)
+  if (config.baseUrl) {
+    // For local provider, append the chat endpoint
+    if (config.provider === 'local') {
+      return `${config.baseUrl}/api/chat`;
+    }
+    return config.baseUrl;
   }
 
   // Default endpoints

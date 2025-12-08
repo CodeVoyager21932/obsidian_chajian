@@ -315,13 +315,39 @@ export class CareerOSSettingsTab extends PluginSettingTab {
       .setName('自定义 API 地址')
       .setDesc('覆盖默认的 API 地址（用于第三方代理服务，如 one-api、new-api 等）')
       .addText(text => {
-        text.setPlaceholder('https://your-proxy.com/v1')
+        text.setPlaceholder('https://your-proxy.com/v1/chat/completions')
           .setValue(this.plugin.settings.customBaseUrl || '')
           .onChange(async (value) => {
             this.plugin.settings.customBaseUrl = value || undefined;
             await this.plugin.saveSettings();
           });
       });
+
+    // Custom API Key
+    new Setting(containerEl)
+      .setName('自定义 API 密钥')
+      .setDesc('第三方代理服务的 API 密钥（填写后将优先使用此密钥）')
+      .addText(text => {
+        text.setPlaceholder('sk-xxx...')
+          .setValue(this.plugin.settings.customApiKey || '')
+          .inputEl.type = 'password';
+        text.onChange(async (value) => {
+          this.plugin.settings.customApiKey = value || undefined;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    // Show hint when custom URL is configured
+    if (this.plugin.settings.customBaseUrl) {
+      const hintEl = containerEl.createDiv({ cls: 'career-os-info' });
+      hintEl.createEl('p', { 
+        text: '💡 已配置自定义 API 地址。如果代理服务有独立的 API Key，请在上方「自定义 API 密钥」中填写。'
+      });
+      hintEl.style.backgroundColor = 'var(--background-secondary)';
+      hintEl.style.padding = '12px';
+      hintEl.style.borderRadius = '4px';
+      hintEl.style.marginTop = '8px';
+    }
   }
 
   /**

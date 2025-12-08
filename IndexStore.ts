@@ -597,7 +597,20 @@ export class IndexStore {
         }
         
         // Parse booleans
-        if (value === 'true') valu
+        if (value === 'true') value = true;
+        if (value === 'false') value = false;
+        
+        result[key] = value;
+      }
+    }
+    
+    return result;
+  }
+
+  /**
+   * Migrate all cards to current schema version
+   */
+  async migrateSchemas(): Promise<{ migrated: number; failed: number }> {
     let migrated = 0;
     let failed = 0;
     

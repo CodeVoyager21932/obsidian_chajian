@@ -295,38 +295,30 @@ export class CareerOSSettingsTab extends PluginSettingTab {
    * Validates: Requirements 12.4
    */
   private renderNetworkSection(containerEl: HTMLElement): void {
-    containerEl.createEl('h2', { text: '网络配置' });
-
-    // Proxy URL
-    new Setting(containerEl)
-      .setName('代理地址')
-      .setDesc('可选的 HTTP 代理地址（如 http://proxy:8080）')
-      .addText(text => {
-        text.setPlaceholder('http://proxy:8080')
-          .setValue(this.plugin.settings.proxyUrl || '')
-          .onChange(async (value) => {
-            this.plugin.settings.proxyUrl = value || undefined;
-            await this.plugin.saveSettings();
-          });
-      });
+    containerEl.createEl('h2', { text: '第三方代理配置' });
+    containerEl.createEl('p', { 
+      text: '使用第三方代理服务（如 one-api、new-api）时，在此配置。填写后将覆盖上方的 LLM 配置。',
+      cls: 'setting-item-description'
+    });
 
     // Custom Base URL
     new Setting(containerEl)
       .setName('自定义 API 地址')
-      .setDesc('覆盖默认的 API 地址（用于第三方代理服务，如 one-api、new-api 等）')
+      .setDesc('第三方代理服务的 API 地址（如 https://your-proxy.com/v1/chat/completions）')
       .addText(text => {
         text.setPlaceholder('https://your-proxy.com/v1/chat/completions')
           .setValue(this.plugin.settings.customBaseUrl || '')
           .onChange(async (value) => {
             this.plugin.settings.customBaseUrl = value || undefined;
             await this.plugin.saveSettings();
+            this.display(); // Refresh to show/hide related fields
           });
       });
 
     // Custom API Key
     new Setting(containerEl)
       .setName('自定义 API 密钥')
-      .setDesc('第三方代理服务的 API 密钥（填写后将优先使用此密钥）')
+      .setDesc('第三方代理服务的 API 密钥')
       .addText(text => {
         text.setPlaceholder('sk-xxx...')
           .setValue(this.plugin.settings.customApiKey || '')
@@ -337,17 +329,47 @@ export class CareerOSSettingsTab extends PluginSettingTab {
         });
       });
 
-    // Show hint when custom URL is configured
-    if (this.plugin.settings.customBaseUrl) {
-      const hintEl = containerEl.createDiv({ cls: 'career-os-info' });
-      hintEl.createEl('p', { 
-        text: '💡 已配置自定义 API 地址。如果代理服务有独立的 API Key，请在上方「自定义 API 密钥」中填写。'
+    // Custom Model Name
+    new Setting(containerEl)
+      .setName('自定义模型名称')
+      .setDesc('代理服务支持的模型名称（如 gemini-1.5-flash、gpt-4o、claude-3-sonnet）')
+      .addText(text => {
+        text.setPlaceholder('gemini-1.5-flash')
+          .setValue(this.plugin.settings.customModel || '')
+          .onChange(async (value) => {
+            this.plugin.settings.customModel = value || undefined;
+            await this.plugin.saveSettings();
+          });
       });
-      hintEl.style.backgroundColor = 'var(--background-secondary)';
-      hintEl.style.padding = '12px';
-      hintEl.style.borderRadius = '4px';
-      hintEl.style.marginTop = '8px';
+
+    // Show status hint
+    if (this.plugin.settings.customBaseUrl) {
+      const statusEl = containerEl.createDiv({ cls: 'career-os-info' });
+      const statusText = this.plugin.settings.customApiKey && this.plugin.settings.customModel
+        ? '✅ 第三方代理已配置完成，将使用此配置进行 LLM 调用。'
+        : '⚠️ 请填写完整的 API 密钥和模型名称。';
+      statusEl.createEl('p', { text: statusText });
+      statusEl.style.backgroundColor = 'var(--background-secondary)';
+      statusEl.style.padding = '12px';
+      statusEl.style.borderRadius = '4px';
+      statusEl.style.marginTop = '8px';
     }
+
+    // HTTP Proxy (separate section)
+    containerEl.createEl('h3', { text: 'HTTP 代理', cls: 'setting-item-heading' });
+    
+    // Proxy URL
+    new Setting(containerEl)
+      .setName('代理地址')
+      .setDesc('可选的 HTTP 代理地址（用于网络受限环境，如 http://proxy:8080）')
+      .addText(text => {
+        text.setPlaceholder('http://proxy:8080')
+          .setValue(this.plugin.settings.proxyUrl || '')
+          .onChange(async (value) => {
+            this.plugin.settings.proxyUrl = value || undefined;
+            await this.plugin.saveSettings();
+          });
+      });
   }
 
   /**

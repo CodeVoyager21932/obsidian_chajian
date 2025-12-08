@@ -141,12 +141,28 @@ function getEndpointUrl(config: LLMConfig, settings: CareerOSSettings): string {
 function buildRequestBody(
   config: LLMConfig,
   prompt: string,
-  options: Required<CallOptions>
+  options: Required<CallOptions>,
+  settings: CareerOSSettings
 ): Record<string, any> {
+  // Use custom model if configured, otherwise use config model
+  const modelName = settings.customBaseUrl && settings.customModel 
+    ? settings.customModel 
+    : config.model;
+
+  // When using custom proxy, always use OpenAI-compatible format
+  if (settings.customBaseUrl) {
+    return {
+      model: modelName,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: options.temperature,
+      ...(config.jsonMode && { response_format: { type: 'json_object' } }),
+    };
+  }
+
   switch (config.provider) {
     case 'openai':
       return {
-        model: config.model,
+        model: modelName,
         messages: [{ role: 'user', content: prompt }],
         temperature: options.temperature,
         ...(config.jsonMode && { response_format: { type: 'json_object' } }),
@@ -154,7 +170,7 @@ function buildRequestBody(
     
     case 'anthropic':
       return {
-        model: config.model,
+        model: modelName,
         max_tokens: 4096,
         messages: [{ role: 'user', content: prompt }],
         temperature: options.temperature,
@@ -171,7 +187,7 @@ function buildRequestBody(
     case 'local':
       // Ollama format
       return {
-        model: config.model,
+        model: modelName,
         messages: [{ role: 'user', content: prompt }],
         stream: false,
         options: {
@@ -188,7 +204,12 @@ function buildRequestBody(
 /**
  * Extract response text from different provider response formats
  */
-function extractResponseText(config: LLMConfig, responseData: any): string {
+function extractResponseText(config: LLMConfig, responseData: any, settings: CareerOSSettings): string {
+  // When using custom proxy, always use OpenAI-compatible format
+  if (settings.customBaseUrl) {
+    return responseData.choices?.[0]?.message?.content || '';
+  }
+
   switch (config.provider) {
     case 'openai':
       return responseData.choices?.[0]?.message?.content || '';
@@ -373,7 +394,7 @@ export class LLMClient {
   ): Promise<string> {
     const url = getEndpointUrl(config, this.settings);
     const headers = buildHeaders(config, this.settings);
-    const body = buildRequestBody(config, prompt, options);
+    const body = buildRequestBody(config, prompt, options, this.settings);
 
     // Create abort controller for timeout
     const controller = new AbortController();
@@ -398,7 +419,7 @@ export class LLMClient {
       }
 
       const responseData = await response.json();
-      return extractResponseText(config, responseData);
+      return extractResponseText(config, responseData, this.settings);
     } catch (error) {
       if (error instanceof LLMError) {
         throw error;

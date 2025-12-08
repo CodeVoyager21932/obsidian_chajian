@@ -11,12 +11,16 @@ import { ErrorLogEntry, ErrorLogSummary, ErrorType } from '../types';
 /**
  * Parse error_log.md content into structured entries
  * 
- * Expected format:
+ * Expected format (new format with Type field):
  * ## 2024-12-07T10:30:00.000Z
+ * - **Type**: LLM/API
  * - **Path**: path/to/note.md
  * - **Attempts**: 3
  * - **Error**: Error message here
+ * - **Details**: Optional details
  * ---
+ * 
+ * Also supports legacy format without Type field (auto-categorizes from error message)
  */
 export function parseErrorLog(content: string): ErrorLogEntry[] {
   if (!content || content.trim() === '') {
@@ -34,6 +38,7 @@ export function parseErrorLog(content: string): ErrorLogEntry[] {
     const body = match[2];
     
     // Extract fields from body
+    const typeMatch = body.match(/\*\*Type\*\*:\s*(.+)/);
     const pathMatch = body.match(/\*\*Path\*\*:\s*(.+)/);
     const attemptsMatch = body.match(/\*\*Attempts\*\*:\s*(\d+)/);
     const errorMatch = body.match(/\*\*Error\*\*:\s*([\s\S]*?)(?=\n-|\n$|$)/);
@@ -41,17 +46,45 @@ export function parseErrorLog(content: string): ErrorLogEntry[] {
     if (timestamp) {
       const errorMessage = errorMatch ? errorMatch[1].trim() : 'Unknown error';
       
+      // Use explicit type if provided, otherwise categorize from error message
+      let errorType: ErrorType;
+      if (typeMatch) {
+        errorType = parseTypeLabel(typeMatch[1].trim());
+      } else {
+        errorType = categorizeError(errorMessage);
+      }
+      
       entries.push({
         timestamp,
         path: pathMatch ? pathMatch[1].trim() : 'Unknown path',
         attempts: attemptsMatch ? parseInt(attemptsMatch[1], 10) : 0,
         error: errorMessage,
-        type: categorizeError(errorMessage),
+        type: errorType,
       });
     }
   }
   
   return entries;
+}
+
+/**
+ * Parse type label back to ErrorType
+ */
+export function parseTypeLabel(label: string): ErrorType {
+  const labelMap: Record<string, ErrorType> = {
+    'extraction': 'extraction',
+    'schema validation': 'validation',
+    'validation': 'validation',
+    'file operation': 'file_operation',
+    'llm/api': 'llm',
+    'llm': 'llm',
+    'api': 'llm',
+    'unknown': 'unknown',
+    'other': 'unknown',
+  };
+  
+  const normalized = label.toLowerCase();
+  return labelMap[normalized] || 'unknown';
 }
 
 /**

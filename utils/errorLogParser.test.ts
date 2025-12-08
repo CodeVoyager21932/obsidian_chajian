@@ -10,7 +10,8 @@ import {
   categorizeError, 
   generateErrorSummary,
   getErrorTypeLabel,
-  getErrorTypeIcon
+  getErrorTypeIcon,
+  parseTypeLabel
 } from './errorLogParser';
 
 describe('parseErrorLog', () => {
@@ -170,5 +171,84 @@ describe('getErrorTypeIcon', () => {
     expect(getErrorTypeIcon('file_operation')).toBe('📁');
     expect(getErrorTypeIcon('llm')).toBe('🤖');
     expect(getErrorTypeIcon('unknown')).toBe('❓');
+  });
+});
+
+describe('parseTypeLabel', () => {
+  it('should parse type labels correctly', () => {
+    expect(parseTypeLabel('Extraction')).toBe('extraction');
+    expect(parseTypeLabel('Schema Validation')).toBe('validation');
+    expect(parseTypeLabel('Validation')).toBe('validation');
+    expect(parseTypeLabel('File Operation')).toBe('file_operation');
+    expect(parseTypeLabel('LLM/API')).toBe('llm');
+    expect(parseTypeLabel('LLM')).toBe('llm');
+    expect(parseTypeLabel('API')).toBe('llm');
+    expect(parseTypeLabel('Unknown')).toBe('unknown');
+    expect(parseTypeLabel('Other')).toBe('unknown');
+  });
+
+  it('should return unknown for unrecognized labels', () => {
+    expect(parseTypeLabel('Something Else')).toBe('unknown');
+    expect(parseTypeLabel('')).toBe('unknown');
+  });
+});
+
+describe('parseErrorLog with new format', () => {
+  it('should parse entries with explicit Type field', () => {
+    const content = `# CareerOS Error Log
+
+## 2024-12-07T10:30:00.000Z
+
+- **Type**: LLM/API
+- **Path**: notes/project.md
+- **Attempts**: 3
+- **Error**: Connection timeout
+
+---
+`;
+    const entries = parseErrorLog(content);
+    
+    expect(entries).toHaveLength(1);
+    expect(entries[0].type).toBe('llm');
+    expect(entries[0].path).toBe('notes/project.md');
+    expect(entries[0].attempts).toBe(3);
+    expect(entries[0].error).toBe('Connection timeout');
+  });
+
+  it('should parse entries with Details field', () => {
+    const content = `# CareerOS Error Log
+
+## 2024-12-07T10:30:00.000Z
+
+- **Type**: Schema Validation
+- **Path**: notes/test.md
+- **Attempts**: 1
+- **Error**: Invalid JSON structure
+- **Details**: Missing required field 'summary'
+
+---
+`;
+    const entries = parseErrorLog(content);
+    
+    expect(entries).toHaveLength(1);
+    expect(entries[0].type).toBe('validation');
+    expect(entries[0].error).toBe('Invalid JSON structure');
+  });
+
+  it('should fallback to auto-categorization for legacy format', () => {
+    const content = `# CareerOS Error Log
+
+## 2024-12-07T10:30:00.000Z
+
+- **Path**: notes/project.md
+- **Attempts**: 3
+- **Error**: LLM timeout error
+
+---
+`;
+    const entries = parseErrorLog(content);
+    
+    expect(entries).toHaveLength(1);
+    expect(entries[0].type).toBe('llm');
   });
 });

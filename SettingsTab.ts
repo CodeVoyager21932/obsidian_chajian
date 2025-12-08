@@ -18,27 +18,27 @@ import { CareerOSSettings, LLMProvider, ModelRole, SkillMapping, SkillCategory, 
 
 // LLM Provider options
 const LLM_PROVIDERS: { value: LLMProvider; label: string; isExternal: boolean }[] = [
-  { value: 'local', label: 'Local (Ollama/LM Studio)', isExternal: false },
+  { value: 'local', label: '本地 LLM (Ollama/LM Studio)', isExternal: false },
   { value: 'openai', label: 'OpenAI', isExternal: true },
-  { value: 'anthropic', label: 'Anthropic', isExternal: true },
-  { value: 'google', label: 'Google AI', isExternal: true },
+  { value: 'anthropic', label: 'Anthropic (Claude)', isExternal: true },
+  { value: 'google', label: 'Google AI (Gemini)', isExternal: true },
 ];
 
 // Model role labels
 const MODEL_ROLE_LABELS: Record<ModelRole, string> = {
-  extract: 'Extract (NoteCard/JDCard extraction)',
-  analyze: 'Analyze (Gap analysis/Plan generation)',
-  embedding: 'Embedding (Future use)',
+  extract: '提取角色 (NoteCard/JDCard 提取)',
+  analyze: '分析角色 (差距分析/计划生成)',
+  embedding: '嵌入角色 (预留功能)',
 };
 
 // Skill category options
 const SKILL_CATEGORIES: { value: SkillCategory; label: string }[] = [
-  { value: 'language', label: 'Programming Language' },
-  { value: 'framework', label: 'Framework' },
-  { value: 'database', label: 'Database' },
-  { value: 'tool', label: 'Tool' },
-  { value: 'platform', label: 'Platform' },
-  { value: 'soft', label: 'Soft Skill' },
+  { value: 'language', label: '编程语言' },
+  { value: 'framework', label: '框架' },
+  { value: 'database', label: '数据库' },
+  { value: 'tool', label: '工具' },
+  { value: 'platform', label: '平台' },
+  { value: 'soft', label: '软技能' },
 ];
 
 export class CareerOSSettingsTab extends PluginSettingTab {
@@ -59,7 +59,7 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h1', { text: 'CareerOS Settings' });
+    containerEl.createEl('h1', { text: 'CareerOS 设置' });
 
     // External LLM Warning Banner
     this.renderExternalLLMWarning(containerEl);
@@ -100,10 +100,10 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     
     if (hasExternalProvider) {
       const warningEl = containerEl.createDiv({ cls: 'career-os-warning' });
-      warningEl.createEl('h3', { text: '⚠️ External LLM Warning' });
+      warningEl.createEl('h3', { text: '⚠️ 外部 LLM 警告' });
       warningEl.createEl('p', { 
-        text: 'You have configured external LLM providers. Your note content will be sent to external APIs. ' +
-              'PII filtering will be applied, but please review your privacy settings carefully.'
+        text: '您已配置外部 LLM 提供商。您的笔记内容将被发送到外部 API。' +
+              '系统会自动过滤个人隐私信息（PII），但请仔细检查您的隐私设置。'
       });
       warningEl.style.backgroundColor = '#fff3cd';
       warningEl.style.border = '1px solid #ffc107';
@@ -131,9 +131,9 @@ export class CareerOSSettingsTab extends PluginSettingTab {
    * Validates: Requirements 12.1
    */
   private renderLLMConfigSection(containerEl: HTMLElement): void {
-    containerEl.createEl('h2', { text: 'LLM Configuration' });
+    containerEl.createEl('h2', { text: 'LLM 配置' });
     containerEl.createEl('p', { 
-      text: 'Configure different LLM models for different tasks. Local models are recommended for privacy.',
+      text: '为不同任务配置不同的 LLM 模型。推荐使用本地模型以保护隐私。',
       cls: 'setting-item-description'
     });
 
@@ -162,7 +162,7 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Provider selection
     new Setting(containerEl)
-      .setName('Provider')
+      .setName('提供商')
       .setDesc(this.getProviderDescription(config.provider))
       .addDropdown(dropdown => {
         for (const provider of LLM_PROVIDERS) {
@@ -185,8 +185,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Model name
     new Setting(containerEl)
-      .setName('Model')
-      .setDesc('Model name (e.g., llama2, gpt-4, claude-3-opus)')
+      .setName('模型名称')
+      .setDesc('模型名称（如 gemini-1.5-flash, gpt-4, claude-3-opus）')
       .addText(text => {
         text.setPlaceholder('llama2')
           .setValue(config.model)
@@ -199,8 +199,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     // Base URL (for local provider)
     if (config.provider === 'local') {
       new Setting(containerEl)
-        .setName('Base URL')
-        .setDesc('Local LLM server URL (e.g., http://localhost:11434 for Ollama)')
+        .setName('服务地址')
+        .setDesc('本地 LLM 服务器地址（如 Ollama 默认为 http://localhost:11434）')
         .addText(text => {
           text.setPlaceholder('http://localhost:11434')
             .setValue(config.baseUrl || '')
@@ -213,8 +213,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // JSON mode toggle
     new Setting(containerEl)
-      .setName('JSON Mode')
-      .setDesc('Enable JSON mode for structured output (recommended for extract role)')
+      .setName('JSON 模式')
+      .setDesc('启用 JSON 模式以获得结构化输出（推荐用于提取角色）')
       .addToggle(toggle => {
         toggle.setValue(config.jsonMode || false)
           .onChange(async (value) => {
@@ -230,9 +230,9 @@ export class CareerOSSettingsTab extends PluginSettingTab {
   private getProviderDescription(provider: LLMProvider): string {
     const providerInfo = LLM_PROVIDERS.find(p => p.value === provider);
     if (providerInfo?.isExternal) {
-      return '⚠️ External API - Content will be sent to external servers';
+      return '⚠️ 外部 API - 内容将发送到外部服务器';
     }
-    return '✅ Local - Content stays on your machine';
+    return '✅ 本地 - 内容保留在您的电脑上';
   }
 
 
@@ -240,16 +240,16 @@ export class CareerOSSettingsTab extends PluginSettingTab {
    * Render API keys section
    */
   private renderAPIKeysSection(containerEl: HTMLElement): void {
-    containerEl.createEl('h2', { text: 'API Keys' });
+    containerEl.createEl('h2', { text: 'API 密钥' });
     containerEl.createEl('p', { 
-      text: 'API keys are stored securely in Obsidian\'s plugin data. Only enter keys for providers you plan to use.',
+      text: 'API 密钥安全存储在 Obsidian 的插件数据中。只需填写您计划使用的提供商的密钥。',
       cls: 'setting-item-description'
     });
 
     // OpenAI API Key
     new Setting(containerEl)
-      .setName('OpenAI API Key')
-      .setDesc('Required for OpenAI models (GPT-4, GPT-3.5, etc.)')
+      .setName('OpenAI API 密钥')
+      .setDesc('用于 OpenAI 模型（GPT-4、GPT-3.5 等）')
       .addText(text => {
         text.setPlaceholder('sk-...')
           .setValue(this.plugin.settings.openaiApiKey)
@@ -262,8 +262,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Anthropic API Key
     new Setting(containerEl)
-      .setName('Anthropic API Key')
-      .setDesc('Required for Anthropic models (Claude-3, etc.)')
+      .setName('Anthropic API 密钥')
+      .setDesc('用于 Anthropic 模型（Claude-3 等）')
       .addText(text => {
         text.setPlaceholder('sk-ant-...')
           .setValue(this.plugin.settings.anthropicApiKey)
@@ -276,8 +276,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Google API Key
     new Setting(containerEl)
-      .setName('Google AI API Key')
-      .setDesc('Required for Google AI models (Gemini, etc.)')
+      .setName('Google AI API 密钥')
+      .setDesc('用于 Google AI 模型（Gemini 等）')
       .addText(text => {
         text.setPlaceholder('AIza...')
           .setValue(this.plugin.settings.googleApiKey)
@@ -295,12 +295,12 @@ export class CareerOSSettingsTab extends PluginSettingTab {
    * Validates: Requirements 12.4
    */
   private renderNetworkSection(containerEl: HTMLElement): void {
-    containerEl.createEl('h2', { text: 'Network Configuration' });
+    containerEl.createEl('h2', { text: '网络配置' });
 
     // Proxy URL
     new Setting(containerEl)
-      .setName('Proxy URL')
-      .setDesc('Optional HTTP proxy for API requests (e.g., http://proxy:8080)')
+      .setName('代理地址')
+      .setDesc('可选的 HTTP 代理地址（如 http://proxy:8080）')
       .addText(text => {
         text.setPlaceholder('http://proxy:8080')
           .setValue(this.plugin.settings.proxyUrl || '')
@@ -312,10 +312,10 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Custom Base URL
     new Setting(containerEl)
-      .setName('Custom Base URL')
-      .setDesc('Override the default API base URL for all external providers')
+      .setName('自定义 API 地址')
+      .setDesc('覆盖默认的 API 地址（用于第三方代理服务，如 one-api、new-api 等）')
       .addText(text => {
-        text.setPlaceholder('https://api.example.com')
+        text.setPlaceholder('https://your-proxy.com/v1')
           .setValue(this.plugin.settings.customBaseUrl || '')
           .onChange(async (value) => {
             this.plugin.settings.customBaseUrl = value || undefined;
@@ -330,12 +330,12 @@ export class CareerOSSettingsTab extends PluginSettingTab {
    * Validates: Requirements 12.5
    */
   private renderProcessingSection(containerEl: HTMLElement): void {
-    containerEl.createEl('h2', { text: 'Processing Configuration' });
+    containerEl.createEl('h2', { text: '处理配置' });
 
     // Max Retries
     new Setting(containerEl)
-      .setName('Max Retries')
-      .setDesc('Maximum number of retry attempts for failed LLM requests (1-10)')
+      .setName('最大重试次数')
+      .setDesc('LLM 请求失败时的最大重试次数（1-10）')
       .addSlider(slider => {
         slider.setLimits(1, 10, 1)
           .setValue(this.plugin.settings.maxRetries)
@@ -347,7 +347,7 @@ export class CareerOSSettingsTab extends PluginSettingTab {
       })
       .addExtraButton(button => {
         button.setIcon('reset')
-          .setTooltip('Reset to default (3)')
+          .setTooltip('重置为默认值 (3)')
           .onClick(async () => {
             this.plugin.settings.maxRetries = 3;
             await this.plugin.saveSettings();
@@ -357,8 +357,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Timeout
     new Setting(containerEl)
-      .setName('Request Timeout (seconds)')
-      .setDesc('Timeout for each LLM request (10-120 seconds)')
+      .setName('请求超时时间（秒）')
+      .setDesc('每个 LLM 请求的超时时间（10-120 秒）')
       .addSlider(slider => {
         slider.setLimits(10, 120, 5)
           .setValue(this.plugin.settings.timeout / 1000)
@@ -370,7 +370,7 @@ export class CareerOSSettingsTab extends PluginSettingTab {
       })
       .addExtraButton(button => {
         button.setIcon('reset')
-          .setTooltip('Reset to default (30s)')
+          .setTooltip('重置为默认值 (30秒)')
           .onClick(async () => {
             this.plugin.settings.timeout = 30000;
             await this.plugin.saveSettings();
@@ -380,8 +380,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Concurrency
     new Setting(containerEl)
-      .setName('Concurrency')
-      .setDesc('Maximum number of concurrent LLM requests (1-5)')
+      .setName('并发数')
+      .setDesc('同时处理的 LLM 请求数量（1-5）')
       .addSlider(slider => {
         slider.setLimits(1, 5, 1)
           .setValue(this.plugin.settings.concurrency)
@@ -393,7 +393,7 @@ export class CareerOSSettingsTab extends PluginSettingTab {
       })
       .addExtraButton(button => {
         button.setIcon('reset')
-          .setTooltip('Reset to default (3)')
+          .setTooltip('重置为默认值 (3)')
           .onClick(async () => {
             this.plugin.settings.concurrency = 3;
             await this.plugin.saveSettings();
@@ -409,16 +409,16 @@ export class CareerOSSettingsTab extends PluginSettingTab {
    * Validates: Requirements 3.3
    */
   private renderPrivacySection(containerEl: HTMLElement): void {
-    containerEl.createEl('h2', { text: 'Privacy & Exclusions' });
+    containerEl.createEl('h2', { text: '隐私与排除' });
     containerEl.createEl('p', { 
-      text: 'Configure which notes should be excluded from LLM processing.',
+      text: '配置哪些笔记应该被排除在 LLM 处理之外。',
       cls: 'setting-item-description'
     });
 
     // Excluded Directories
     new Setting(containerEl)
-      .setName('Excluded Directories')
-      .setDesc('Comma-separated list of directory paths to exclude (e.g., private, journal/personal)')
+      .setName('排除目录')
+      .setDesc('用逗号分隔的目录路径列表（如 private, journal/personal）')
       .addTextArea(text => {
         text.setPlaceholder('private, journal/personal')
           .setValue(this.plugin.settings.exclusionRules.directories.join(', '))
@@ -435,8 +435,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Excluded Tags
     new Setting(containerEl)
-      .setName('Excluded Tags')
-      .setDesc('Comma-separated list of tags to exclude (without #, e.g., private, personal)')
+      .setName('排除标签')
+      .setDesc('用逗号分隔的标签列表（不带 #，如 private, personal）')
       .addTextArea(text => {
         text.setPlaceholder('private, personal, secret')
           .setValue(this.plugin.settings.exclusionRules.tags.join(', '))
@@ -458,9 +458,9 @@ export class CareerOSSettingsTab extends PluginSettingTab {
    * Validates: Requirements 13.3
    */
   private renderTaxonomySection(containerEl: HTMLElement): void {
-    containerEl.createEl('h2', { text: 'Skill Taxonomy' });
+    containerEl.createEl('h2', { text: '技能分类' });
     containerEl.createEl('p', { 
-      text: 'Manage skill name mappings for normalization. Aliases will be mapped to standard names.',
+      text: '管理技能名称映射，用于标准化。别名将被映射到标准名称。',
       cls: 'setting-item-description'
     });
 
@@ -471,12 +471,12 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     addFormEl.style.borderRadius = '4px';
     addFormEl.style.marginBottom = '16px';
 
-    addFormEl.createEl('h4', { text: 'Add New Skill Mapping' });
+    addFormEl.createEl('h4', { text: '添加新的技能映射' });
 
     // Standard name input
     new Setting(addFormEl)
-      .setName('Standard Name')
-      .setDesc('The canonical name for this skill')
+      .setName('标准名称')
+      .setDesc('该技能的规范名称')
       .addText(text => {
         text.setPlaceholder('e.g., JavaScript')
           .setValue(this.newSkillName)
@@ -487,10 +487,10 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Aliases input
     new Setting(addFormEl)
-      .setName('Aliases')
-      .setDesc('Comma-separated list of alternative names')
+      .setName('别名')
+      .setDesc('用逗号分隔的替代名称列表')
       .addText(text => {
-        text.setPlaceholder('e.g., js, JS, javascript')
+        text.setPlaceholder('如 js, JS, javascript')
           .setValue(this.newSkillAliases)
           .onChange((value) => {
             this.newSkillAliases = value;
@@ -499,8 +499,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Category selection
     new Setting(addFormEl)
-      .setName('Category')
-      .setDesc('Skill category for grouping')
+      .setName('分类')
+      .setDesc('技能分类，用于分组显示')
       .addDropdown(dropdown => {
         for (const cat of SKILL_CATEGORIES) {
           dropdown.addOption(cat.value, cat.label);
@@ -514,7 +514,7 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     // Add button
     new Setting(addFormEl)
       .addButton(button => {
-        button.setButtonText('Add Skill Mapping')
+        button.setButtonText('添加技能映射')
           .setCta()
           .onClick(async () => {
             await this.addSkillMapping();
@@ -538,13 +538,13 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     
     if (mappings.length === 0) {
       this.taxonomyContainer.createEl('p', { 
-        text: 'No custom skill mappings defined. Default mappings are built-in.',
+        text: '暂无自定义技能映射。系统已内置默认映射。',
         cls: 'setting-item-description'
       });
       return;
     }
 
-    this.taxonomyContainer.createEl('h4', { text: `Custom Mappings (${mappings.length})` });
+    this.taxonomyContainer.createEl('h4', { text: `自定义映射 (${mappings.length})` });
 
     // Create a table-like display
     const listEl = this.taxonomyContainer.createDiv({ cls: 'career-os-taxonomy-items' });
@@ -580,13 +580,13 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     
     if (mapping.aliases.length > 0) {
       infoEl.createEl('div', { 
-        text: `Aliases: ${mapping.aliases.join(', ')}`,
+        text: `别名: ${mapping.aliases.join(', ')}`,
         cls: 'setting-item-description'
       });
     }
 
     // Delete button
-    const deleteBtn = itemEl.createEl('button', { text: 'Delete' });
+    const deleteBtn = itemEl.createEl('button', { text: '删除' });
     deleteBtn.style.marginLeft = '8px';
     deleteBtn.addEventListener('click', async () => {
       await this.deleteSkillMapping(index);
@@ -598,7 +598,7 @@ export class CareerOSSettingsTab extends PluginSettingTab {
    */
   private async addSkillMapping(): Promise<void> {
     if (!this.newSkillName.trim()) {
-      new Notice('Please enter a standard skill name');
+      new Notice('请输入标准技能名称');
       return;
     }
 
@@ -621,11 +621,11 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     if (existingIndex >= 0) {
       // Update existing mapping
       this.plugin.settings.taxonomy[existingIndex] = newMapping;
-      new Notice(`Updated skill mapping: ${newMapping.standardName}`);
+      new Notice(`已更新技能映射: ${newMapping.standardName}`);
     } else {
       // Add new mapping
       this.plugin.settings.taxonomy.push(newMapping);
-      new Notice(`Added skill mapping: ${newMapping.standardName}`);
+      new Notice(`已添加技能映射: ${newMapping.standardName}`);
     }
 
     await this.plugin.saveSettings();
@@ -647,7 +647,7 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     this.plugin.settings.taxonomy.splice(index, 1);
     await this.plugin.saveSettings();
     
-    new Notice(`Deleted skill mapping: ${mapping.standardName}`);
+    new Notice(`已删除技能映射: ${mapping.standardName}`);
     this.renderTaxonomyList();
   }
 
@@ -658,16 +658,16 @@ export class CareerOSSettingsTab extends PluginSettingTab {
    * Validates: Requirements 15.1, 15.2
    */
   private renderDryRunSection(containerEl: HTMLElement): void {
-    containerEl.createEl('h2', { text: 'Dry-Run Mode' });
+    containerEl.createEl('h2', { text: '试运行模式' });
     containerEl.createEl('p', { 
-      text: 'Test extraction quality before full indexing. Results are displayed in console without writing files.',
+      text: '在正式索引前测试提取质量。结果显示在控制台中，不会写入文件。',
       cls: 'setting-item-description'
     });
 
     // Dry-run toggle
     new Setting(containerEl)
-      .setName('Enable Dry-Run Mode')
-      .setDesc('When enabled, indexing will only process a limited number of notes and display results without saving')
+      .setName('启用试运行模式')
+      .setDesc('启用后，索引只会处理有限数量的笔记，并显示结果而不保存')
       .addToggle(toggle => {
         toggle.setValue(this.plugin.settings.dryRunEnabled)
           .onChange(async (value) => {
@@ -680,8 +680,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     // Max notes for dry-run
     if (this.plugin.settings.dryRunEnabled) {
       new Setting(containerEl)
-        .setName('Dry-Run Max Notes')
-        .setDesc('Maximum number of notes to process in dry-run mode (1-50)')
+        .setName('试运行最大笔记数')
+        .setDesc('试运行模式下处理的最大笔记数量（1-50）')
         .addSlider(slider => {
           slider.setLimits(1, 50, 1)
             .setValue(this.plugin.settings.dryRunMaxNotes)
@@ -693,7 +693,7 @@ export class CareerOSSettingsTab extends PluginSettingTab {
         })
         .addExtraButton(button => {
           button.setIcon('reset')
-            .setTooltip('Reset to default (10)')
+            .setTooltip('重置为默认值 (10)')
             .onClick(async () => {
               this.plugin.settings.dryRunMaxNotes = 10;
               await this.plugin.saveSettings();
@@ -704,8 +704,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
       // Dry-run info box
       const infoEl = containerEl.createDiv({ cls: 'career-os-info' });
       infoEl.createEl('p', { 
-        text: '💡 Tip: Run "CareerOS: Cold Start Indexing" command to test extraction. ' +
-              'Results will appear in the developer console (Ctrl+Shift+I).'
+        text: '💡 提示：运行「CareerOS: Cold Start Indexing」命令来测试提取效果。' +
+              '结果将显示在开发者控制台中（Ctrl+Shift+I）。'
       });
       infoEl.style.backgroundColor = 'var(--background-secondary)';
       infoEl.style.padding = '12px';
@@ -718,16 +718,16 @@ export class CareerOSSettingsTab extends PluginSettingTab {
    * Render directory configuration section
    */
   private renderDirectorySection(containerEl: HTMLElement): void {
-    containerEl.createEl('h2', { text: 'Data Directories' });
+    containerEl.createEl('h2', { text: '数据目录' });
     containerEl.createEl('p', { 
-      text: 'Configure where CareerOS stores its data files. Paths are relative to the vault root.',
+      text: '配置 CareerOS 存储数据文件的位置。路径相对于 Vault 根目录。',
       cls: 'setting-item-description'
     });
 
     // Index directory
     new Setting(containerEl)
-      .setName('Index Directory')
-      .setDesc('Directory for NoteCard index files')
+      .setName('索引目录')
+      .setDesc('NoteCard 索引文件的存储目录')
       .addText(text => {
         text.setPlaceholder('.career-os/index')
           .setValue(this.plugin.settings.indexDirectory)
@@ -739,8 +739,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Mapping directory
     new Setting(containerEl)
-      .setName('Mapping Directory')
-      .setDesc('Directory for profiles, gap analyses, and action plans')
+      .setName('画像目录')
+      .setDesc('画像、差距分析和行动计划的存储目录')
       .addText(text => {
         text.setPlaceholder('.career-os/mapping')
           .setValue(this.plugin.settings.mappingDirectory)
@@ -752,8 +752,8 @@ export class CareerOSSettingsTab extends PluginSettingTab {
 
     // Market cards directory
     new Setting(containerEl)
-      .setName('Market Cards Directory')
-      .setDesc('Directory for JDCard files')
+      .setName('市场卡片目录')
+      .setDesc('JDCard 文件的存储目录')
       .addText(text => {
         text.setPlaceholder('.career-os/market_cards')
           .setValue(this.plugin.settings.marketCardsDirectory)
@@ -764,16 +764,16 @@ export class CareerOSSettingsTab extends PluginSettingTab {
       });
 
     // Reset all settings button
-    containerEl.createEl('h2', { text: 'Reset Settings' });
+    containerEl.createEl('h2', { text: '重置设置' });
     
     new Setting(containerEl)
-      .setName('Reset All Settings')
-      .setDesc('Reset all settings to their default values. This cannot be undone.')
+      .setName('重置所有设置')
+      .setDesc('将所有设置重置为默认值。此操作无法撤销。')
       .addButton(button => {
-        button.setButtonText('Reset to Defaults')
+        button.setButtonText('重置为默认值')
           .setWarning()
           .onClick(async () => {
-            if (confirm('Are you sure you want to reset all settings to defaults?')) {
+            if (confirm('确定要将所有设置重置为默认值吗？')) {
               await this.resetToDefaults();
             }
           });
@@ -827,7 +827,7 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     };
 
     // Preserve API keys if user wants
-    const preserveKeys = confirm('Do you want to preserve your API keys?');
+    const preserveKeys = confirm('是否保留您的 API 密钥？');
     if (preserveKeys) {
       defaultSettings.openaiApiKey = this.plugin.settings.openaiApiKey;
       defaultSettings.anthropicApiKey = this.plugin.settings.anthropicApiKey;
@@ -837,7 +837,7 @@ export class CareerOSSettingsTab extends PluginSettingTab {
     this.plugin.settings = defaultSettings;
     await this.plugin.saveSettings();
     
-    new Notice('Settings reset to defaults');
+    new Notice('设置已重置为默认值');
     this.display();
   }
 }

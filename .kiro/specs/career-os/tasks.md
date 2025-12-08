@@ -432,7 +432,9 @@
 
   - Ensure all tests pass, ask the user if questions arise.
 
-- [-] 25. Polish and documentation
+- [x] 25. Polish and documentation
+
+
 
 
 
